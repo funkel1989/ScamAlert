@@ -13,6 +13,7 @@ public sealed class NamedPipeDriverServer(
     ILogger<NamedPipeDriverServer> logger) : BackgroundService
 {
     public const string PipeName = "scamalert-driver-events";
+    private static readonly TimeSpan ConnectionTimeout = TimeSpan.FromSeconds(10);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -28,6 +29,9 @@ public sealed class NamedPipeDriverServer(
                     PipeOptions.Asynchronous);
 
                 await pipe.WaitForConnectionAsync(stoppingToken);
+                using var connectionTimeout = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                connectionTimeout.CancelAfter(ConnectionTimeout);
+                var connectionToken = connectionTimeout.Token;
 
                 using var reader = new StreamReader(
                     pipe,
@@ -43,9 +47,10 @@ public sealed class NamedPipeDriverServer(
                     AutoFlush = true
                 };
 
-                var requestLine = await reader.ReadLineAsync(stoppingToken);
+                var requestLine = await reader.ReadLineAsync(connectionToken);
                 if (string.IsNullOrWhiteSpace(requestLine))
                 {
+                    logger.LogWarning("Driver pipe request was missing or blank.");
                     continue;
                 }
 
@@ -55,17 +60,26 @@ public sealed class NamedPipeDriverServer(
 
                 if (attempt is null)
                 {
+                    logger.LogWarning("Driver pipe request could not be deserialized.");
                     continue;
                 }
 
-                var decision = await broker.HandleAttemptAsync(attempt, stoppingToken);
+                var decision = await broker.HandleAttemptAsync(attempt, connectionToken);
                 var responseLine = JsonSerializer.Serialize(decision, SignalJson.Options);
 
-                await writer.WriteLineAsync(responseLine.AsMemory(), stoppingToken);
+                await writer.WriteLineAsync(responseLine.AsMemory(), connectionToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 break;
+            }
+            catch (OperationCanceledException)
+            {
+                logger.LogWarning("Driver pipe request timed out.");
+            }
+            catch (JsonException ex)
+            {
+                logger.LogWarning(ex, "Driver pipe request was malformed.");
             }
             catch (Exception ex)
             {

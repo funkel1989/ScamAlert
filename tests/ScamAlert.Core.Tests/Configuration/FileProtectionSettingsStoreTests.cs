@@ -42,6 +42,34 @@ public sealed class FileProtectionSettingsStoreTests
         Assert.Equal(10, settings.PromptTimeoutSeconds);
     }
 
+    [Fact]
+    public async Task GetAsyncReturnsDefaultWhenSettingsFileContainsJsonNull()
+    {
+        var path = CreatePath();
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        await File.WriteAllTextAsync(path, "null", CancellationToken.None);
+        var store = new FileProtectionSettingsStore(path);
+
+        var settings = await store.GetAsync(CancellationToken.None);
+
+        Assert.Equal(ProtectionSettings.Default, settings);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   \r\n\t")]
+    public async Task GetAsyncReturnsDefaultWhenSettingsFileIsEmptyOrWhitespace(string contents)
+    {
+        var path = CreatePath();
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        await File.WriteAllTextAsync(path, contents, CancellationToken.None);
+        var store = new FileProtectionSettingsStore(path);
+
+        var settings = await store.GetAsync(CancellationToken.None);
+
+        Assert.Equal(ProtectionSettings.Default, settings);
+    }
+
     private static string CreatePath()
     {
         var directory = Path.Combine(Path.GetTempPath(), "ScamAlert.Tests", Guid.NewGuid().ToString("N"));

@@ -72,6 +72,34 @@ public sealed class FileRememberedRuleStoreTests
     }
 
     [Fact]
+    public async Task FindBySourceIpAsyncReturnsNullWhenRulesFileContainsJsonNull()
+    {
+        var path = CreatePath();
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        await File.WriteAllTextAsync(path, "null", CancellationToken.None);
+        var store = new FileRememberedRuleStore(path);
+
+        var saved = await store.FindBySourceIpAsync("203.0.113.7", CancellationToken.None);
+
+        Assert.Null(saved);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   \r\n\t")]
+    public async Task FindBySourceIpAsyncReturnsNullWhenRulesFileIsEmptyOrWhitespace(string contents)
+    {
+        var path = CreatePath();
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        await File.WriteAllTextAsync(path, contents, CancellationToken.None);
+        var store = new FileRememberedRuleStore(path);
+
+        var saved = await store.FindBySourceIpAsync("203.0.113.7", CancellationToken.None);
+
+        Assert.Null(saved);
+    }
+
+    [Fact]
     public async Task UpsertAsyncReplacesCorruptRulesFileWithNewRule()
     {
         var path = CreatePath();

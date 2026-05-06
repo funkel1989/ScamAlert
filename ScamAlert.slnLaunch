@@ -1,0 +1,15 @@
+[
+  {
+    "Name": "StartUp",
+    "Projects": [
+      {
+        "Path": "src\\ScamAlert.Broker\\ScamAlert.Broker.csproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "src\\ScamAlert.Tray\\ScamAlert.Tray.csproj",
+        "Action": "Start"
+      }
+    ]
+  }
+]

@@ -33,7 +33,7 @@ public sealed class RemoteAccessBroker(
             cancellationToken);
 
         var rememberedRule = await rememberedRules.FindBySourceIpAsync(attempt.SourceIp, cancellationToken);
-        var rememberedDecision = policyEngine.EvaluateRememberedRule(attempt, rememberedRule);
+        var rememberedDecision = EvaluateRememberedRule(attempt, rememberedRule);
         if (rememberedDecision is not null)
         {
             return rememberedDecision;
@@ -49,14 +49,17 @@ public sealed class RemoteAccessBroker(
             TimeoutSeconds: settings.PromptTimeoutSeconds);
 
         var response = await prompt.RequestDecisionAsync(request, cancellationToken);
-        if (response is null)
+        if (response is null || response.ObservedEventId != attempt.EventId)
         {
             return policyEngine.ApplyTimeout(attempt, settings.TimeoutPolicy);
         }
 
+        var userDecision = policyEngine.ApplyUserDecision(attempt, response.Decision);
+        var now = DateTimeOffset.UtcNow;
+
         if (response.Remember)
         {
-            var rule = policyEngine.BuildRememberedRule(attempt, response.Decision, DateTimeOffset.UtcNow);
+            var rule = policyEngine.BuildRememberedRule(attempt, response.Decision, now);
             await rememberedRules.UpsertAsync(rule, cancellationToken);
         }
 
@@ -64,13 +67,27 @@ public sealed class RemoteAccessBroker(
             new UserDecisionUpdatedSignal(
                 EventId: Guid.NewGuid(),
                 ObservedEventId: attempt.EventId,
-                OccurredAt: DateTimeOffset.UtcNow,
+                OccurredAt: now,
                 SourceIp: attempt.SourceIp,
                 Decision: response.Decision,
                 Remembered: response.Remember,
                 Reason: "userSelected"),
             cancellationToken);
 
-        return policyEngine.ApplyUserDecision(attempt, response.Decision);
+        return userDecision;
+    }
+
+    private DriverDecisionResponse? EvaluateRememberedRule(
+        ProtectedConnectionAttempt attempt,
+        RememberedIpRule? rememberedRule)
+    {
+        try
+        {
+            return policyEngine.EvaluateRememberedRule(attempt, rememberedRule);
+        }
+        catch (ArgumentOutOfRangeException) when (rememberedRule is not null)
+        {
+            return null;
+        }
     }
 }

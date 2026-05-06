@@ -186,17 +186,36 @@ public sealed class PromptPipeServer : IDisposable
     }
 
     private static async Task MonitorPipeDisconnectAsync(
-        NamedPipeServerStream pipe,
+        Stream pipe,
         CancellationTokenSource promptCancellation)
     {
-        while (!promptCancellation.IsCancellationRequested)
+        var buffer = new byte[1];
+
+        try
         {
-            await Task.Delay(TimeSpan.FromMilliseconds(250), promptCancellation.Token);
-            if (!pipe.IsConnected)
+            while (!promptCancellation.IsCancellationRequested)
             {
-                await promptCancellation.CancelAsync();
-                return;
+                var bytesRead = await pipe.ReadAsync(
+                    buffer.AsMemory(0, 1),
+                    promptCancellation.Token);
+
+                if (bytesRead == 0)
+                {
+                    await promptCancellation.CancelAsync();
+                    return;
+                }
             }
+        }
+        catch (OperationCanceledException) when (promptCancellation.IsCancellationRequested)
+        {
+        }
+        catch (IOException)
+        {
+            await promptCancellation.CancelAsync();
+        }
+        catch (ObjectDisposedException)
+        {
+            await promptCancellation.CancelAsync();
         }
     }
 

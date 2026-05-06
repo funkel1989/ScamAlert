@@ -19,6 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\ScamAlert.Broker\ScamAlert.Broker.csproj" />
     <ProjectReference Include="..\..\src\ScamAlert.Contracts\ScamAlert.Contracts.csproj" />
     <ProjectReference Include="..\..\src\ScamAlert.Core\ScamAlert.Core.csproj" />
   </ItemGroup>

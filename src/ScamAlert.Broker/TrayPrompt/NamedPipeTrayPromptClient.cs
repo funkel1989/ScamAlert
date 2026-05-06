@@ -62,7 +62,9 @@ public sealed class NamedPipeTrayPromptClient : IConnectionDecisionPrompt
                 responseLine,
                 SignalJson.Options);
 
-            if (response is null || response.ObservedEventId != request.ObservedEventId)
+            if (response is null
+                || response.ObservedEventId != request.ObservedEventId
+                || !IsKnownUserDecision(response.Decision))
             {
                 return null;
             }
@@ -140,6 +142,11 @@ public sealed class NamedPipeTrayPromptClient : IConnectionDecisionPrompt
         }
 
         return Utf8NoBomStrict.GetString(bytes);
+    }
+
+    private static bool IsKnownUserDecision(UserDecisionKind decision)
+    {
+        return decision is UserDecisionKind.AllowOnce or UserDecisionKind.BlockOnce;
     }
 
     private sealed class TrayPromptProtocolException(string message) : Exception(message);

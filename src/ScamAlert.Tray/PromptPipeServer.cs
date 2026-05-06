@@ -77,7 +77,7 @@ public sealed class PromptPipeServer : IDisposable
                     continue;
                 }
 
-                var response = await ShowPromptAsync(request, stop.Token);
+                var response = await ShowPromptAsync(request, pipe, stop.Token);
                 var responseLine = JsonSerializer.Serialize(response, SignalJson.Options);
                 await writer.WriteLineAsync(responseLine.AsMemory(), stop.Token);
             }
@@ -110,28 +110,94 @@ public sealed class PromptPipeServer : IDisposable
         }
     }
 
-    private Task<DecisionPromptResponse?> ShowPromptAsync(
+    private async Task<DecisionPromptResponse?> ShowPromptAsync(
         DecisionPromptRequest request,
+        NamedPipeServerStream pipe,
         CancellationToken cancellationToken)
     {
+        if (request.TimeoutSeconds <= 0)
+        {
+            return null;
+        }
+
+        using var promptCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        promptCancellation.CancelAfter(TimeSpan.FromSeconds(request.TimeoutSeconds));
+        var promptToken = promptCancellation.Token;
+
         var completion = new TaskCompletionSource<DecisionPromptResponse?>(
             TaskCreationOptions.RunContinuationsAsynchronously);
+        ConnectionPromptForm? activeForm = null;
+
+        using var registration = promptCancellation.Token.Register(() =>
+        {
+            completion.TrySetResult(null);
+            uiContext.Post(_ =>
+            {
+                var form = activeForm;
+                if (form is not null && !form.IsDisposed)
+                {
+                    form.CloseWithoutResponse();
+                }
+            }, null);
+        });
+
+        var disconnectMonitor = MonitorPipeDisconnectAsync(pipe, promptCancellation);
 
         uiContext.Post(_ =>
         {
             try
             {
+                if (promptToken.IsCancellationRequested)
+                {
+                    completion.TrySetResult(null);
+                    return;
+                }
+
                 using var form = new ConnectionPromptForm(request);
+                activeForm = form;
                 form.ShowDialog();
                 completion.TrySetResult(form.PromptResponse);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                completion.TrySetException(ex);
+                completion.TrySetResult(null);
+            }
+            finally
+            {
+                activeForm = null;
             }
         }, null);
 
-        return completion.Task.WaitAsync(cancellationToken);
+        try
+        {
+            return await completion.Task;
+        }
+        finally
+        {
+            await promptCancellation.CancelAsync();
+            try
+            {
+                await disconnectMonitor;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+    }
+
+    private static async Task MonitorPipeDisconnectAsync(
+        NamedPipeServerStream pipe,
+        CancellationTokenSource promptCancellation)
+    {
+        while (!promptCancellation.IsCancellationRequested)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(250), promptCancellation.Token);
+            if (!pipe.IsConnected)
+            {
+                await promptCancellation.CancelAsync();
+                return;
+            }
+        }
     }
 
     private static async Task<string> ReadFrameAsync(

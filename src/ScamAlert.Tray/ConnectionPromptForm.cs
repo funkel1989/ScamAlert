@@ -78,6 +78,13 @@ public sealed class ConnectionPromptForm : Form
 
     public DecisionPromptResponse? PromptResponse => response;
 
+    public void CloseWithoutResponse()
+    {
+        response = null;
+        DialogResult = DialogResult.Cancel;
+        Close();
+    }
+
     private static void AddDetail(TableLayoutPanel details, int row, string label, string value)
     {
         details.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));

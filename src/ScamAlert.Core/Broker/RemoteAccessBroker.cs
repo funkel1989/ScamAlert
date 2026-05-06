@@ -21,7 +21,7 @@ public sealed class RemoteAccessBroker(
 
         var settings = await settingsStore.GetAsync(cancellationToken);
 
-        await signalSink.AppendAsync(
+        await TryAppendSignalAsync(
             new ObservedInboundAttemptSignal(
                 EventId: attempt.EventId,
                 OccurredAt: attempt.OccurredAt,
@@ -63,7 +63,7 @@ public sealed class RemoteAccessBroker(
             await rememberedRules.UpsertAsync(rule, cancellationToken);
         }
 
-        await signalSink.AppendAsync(
+        await TryAppendSignalAsync(
             new UserDecisionUpdatedSignal(
                 EventId: Guid.NewGuid(),
                 ObservedEventId: attempt.EventId,
@@ -75,6 +75,25 @@ public sealed class RemoteAccessBroker(
             cancellationToken);
 
         return userDecision;
+    }
+
+    private async Task TryAppendSignalAsync<TSignal>(
+        TSignal signal,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await signalSink.AppendAsync(signal, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            // Signal reporting is best-effort. Local allow/block decisions must continue
+            // even when the file sink is locked, unavailable, or out of space.
+        }
     }
 
     private DriverDecisionResponse? EvaluateRememberedRule(

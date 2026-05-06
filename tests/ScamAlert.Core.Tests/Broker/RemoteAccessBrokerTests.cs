@@ -99,6 +99,57 @@ public sealed class RemoteAccessBrokerTests
     }
 
     [Fact]
+    public async Task ObservedSignalSinkFailureDoesNotPreventTimeoutDecision()
+    {
+        var fixture = CreateFixture(
+            response: null,
+            signalSink: new TestSignalSink
+            {
+                ThrowOnAppendNumber = 1
+            });
+
+        var decision = await fixture.Broker.HandleAttemptAsync(CreateAttempt(), CancellationToken.None);
+
+        Assert.Equal(DriverDecisionKind.Allow, decision.Decision);
+        Assert.Equal("timeoutPolicy", decision.Reason);
+    }
+
+    [Fact]
+    public async Task UserDecisionSignalSinkFailureDoesNotPreventUserDecision()
+    {
+        var attempt = CreateAttempt();
+        var fixture = CreateFixture(
+            response: new DecisionPromptResponse(
+                attempt.EventId,
+                UserDecisionKind.BlockOnce,
+                Remember: false),
+            signalSink: new TestSignalSink
+            {
+                ThrowOnAppendNumber = 2
+            });
+
+        var decision = await fixture.Broker.HandleAttemptAsync(attempt, CancellationToken.None);
+
+        Assert.Equal(DriverDecisionKind.Block, decision.Decision);
+        Assert.Equal("userSelected", decision.Reason);
+    }
+
+    [Fact]
+    public async Task SignalSinkCancellationStillCancelsBrokerFlow()
+    {
+        using var cancellationTokenSource = new CancellationTokenSource();
+        cancellationTokenSource.Cancel();
+        var fixture = CreateFixture(
+            signalSink: new TestSignalSink
+            {
+                ThrowCancellationOnAppend = true
+            });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => fixture.Broker.HandleAttemptAsync(CreateAttempt(), cancellationTokenSource.Token));
+    }
+
+    [Fact]
     public async Task MismatchedPromptResponseObservedEventIdAppliesTimeoutWithoutUserDecisionSignal()
     {
         var fixture = CreateFixture(
@@ -222,11 +273,12 @@ public sealed class RemoteAccessBrokerTests
 
     private static BrokerFixture CreateFixture(
         ProtectionSettings? settings = null,
-        DecisionPromptResponse? response = null)
+        DecisionPromptResponse? response = null,
+        TestSignalSink? signalSink = null)
     {
         var settingsStore = new TestProtectionSettingsStore(settings ?? ProtectionSettings.Default);
         var rememberedRules = new TestRememberedRuleStore();
-        var signalSink = new TestSignalSink();
+        signalSink ??= new TestSignalSink();
         var prompt = new TestConnectionDecisionPrompt(response);
         var broker = new RemoteAccessBroker(
             settingsStore,
@@ -302,8 +354,23 @@ public sealed class RemoteAccessBrokerTests
 
         public List<CancellationToken> AppendCancellationTokens { get; } = [];
 
+        public int? ThrowOnAppendNumber { get; init; }
+
+        public bool ThrowCancellationOnAppend { get; init; }
+
         public Task AppendAsync<TSignal>(TSignal signal, CancellationToken cancellationToken)
         {
+            if (ThrowCancellationOnAppend)
+            {
+                return Task.FromCanceled(cancellationToken);
+            }
+
+            var appendNumber = AppendCancellationTokens.Count + 1;
+            if (ThrowOnAppendNumber == appendNumber)
+            {
+                throw new IOException("Simulated signal sink failure.");
+            }
+
             Signals.Add(signal!);
             AppendCancellationTokens.Add(cancellationToken);
             return Task.CompletedTask;

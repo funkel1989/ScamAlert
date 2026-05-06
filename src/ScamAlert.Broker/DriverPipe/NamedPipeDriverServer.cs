@@ -14,7 +14,7 @@ public sealed class NamedPipeDriverServer(
 {
     public const string PipeName = "scamalert-driver-events";
     private const int MaxFrameBytes = 16 * 1024;
-    private static readonly TimeSpan ConnectionTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan ConnectionTimeout = TimeSpan.FromSeconds(30);
     private static readonly UTF8Encoding Utf8NoBomStrict = new(
         encoderShouldEmitUTF8Identifier: false,
         throwOnInvalidBytes: true);

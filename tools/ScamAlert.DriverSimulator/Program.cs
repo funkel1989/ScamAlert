@@ -32,7 +32,7 @@ try
 {
     await pipe.ConnectAsync(3000);
 
-    using var protocolTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+    using var protocolTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
 
     using var reader = new StreamReader(
         pipe,

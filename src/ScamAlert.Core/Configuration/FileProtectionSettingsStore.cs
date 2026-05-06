@@ -27,8 +27,20 @@ public sealed class FileProtectionSettingsStore : IProtectionSettingsStore
             }
 
             var json = await File.ReadAllTextAsync(path, cancellationToken);
-            return JsonSerializer.Deserialize<ProtectionSettings>(json, SignalJson.Options)
-                ?? ProtectionSettings.Default;
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return ProtectionSettings.Default;
+            }
+
+            try
+            {
+                return JsonSerializer.Deserialize<ProtectionSettings>(json, SignalJson.Options)
+                    ?? ProtectionSettings.Default;
+            }
+            catch (JsonException)
+            {
+                return ProtectionSettings.Default;
+            }
         }
         finally
         {

@@ -28,6 +28,20 @@ public sealed class FileProtectionSettingsStoreTests
         Assert.Equal(configured, reloaded);
     }
 
+    [Fact]
+    public async Task GetAsyncReturnsDefaultWhenSettingsFileContainsCorruptJson()
+    {
+        var path = CreatePath();
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        await File.WriteAllTextAsync(path, "{ not valid json", CancellationToken.None);
+        var store = new FileProtectionSettingsStore(path);
+
+        var settings = await store.GetAsync(CancellationToken.None);
+
+        Assert.Equal(TimeoutPolicy.AllowOnTimeout, settings.TimeoutPolicy);
+        Assert.Equal(10, settings.PromptTimeoutSeconds);
+    }
+
     private static string CreatePath()
     {
         var directory = Path.Combine(Path.GetTempPath(), "ScamAlert.Tests", Guid.NewGuid().ToString("N"));

@@ -77,6 +77,18 @@ public sealed class FileRememberedRuleStore : IRememberedRuleStore
         }
 
         var json = await File.ReadAllTextAsync(path, cancellationToken);
-        return JsonSerializer.Deserialize<List<RememberedIpRule>>(json, SignalJson.Options) ?? [];
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return [];
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<RememberedIpRule>>(json, SignalJson.Options) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
     }
 }

@@ -16,7 +16,7 @@ The real WFP driver monitor is not wired into the app yet. For now, use `ScamAle
 ## Prerequisites
 
 - Windows
-- .NET 8 SDK
+- .NET 10 SDK
 - Visual Studio 2022, optional but useful for running broker and tray together
 
 ## Build And Test

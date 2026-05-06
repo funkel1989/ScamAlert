@@ -1,0 +1,21 @@
+using ScamAlert.Data.Enums;
+
+namespace ScamAlert.Data.Entities;
+
+public sealed class AlertEvent
+{
+    public Guid Id { get; set; }
+    public Guid CustomerId { get; set; }
+    public Guid DeviceId { get; set; }
+    public string SourceIp { get; set; } = string.Empty;
+    public int DestinationPort { get; set; }
+    public string Service { get; set; } = string.Empty;
+    public AlertResolutionStatus ResolutionStatus { get; set; }
+    public Guid? AcknowledgedByContactId { get; set; }
+    public DateTimeOffset CreatedUtc { get; set; }
+    public DateTimeOffset UpdatedUtc { get; set; }
+
+    public Customer Customer { get; set; } = null!;
+    public MonitoredDevice Device { get; set; } = null!;
+    public List<NotificationAttempt> NotificationAttempts { get; set; } = [];
+}

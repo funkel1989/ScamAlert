@@ -12,7 +12,14 @@ public sealed class RemoteAccessPolicyEngine
             return null;
         }
 
-        return new DriverDecisionResponse(attempt.EventId, rule.Decision, "rememberedIpRule");
+        var driverDecision = rule.Decision switch
+        {
+            DriverDecisionKind.Allow => DriverDecisionKind.Allow,
+            DriverDecisionKind.Block => DriverDecisionKind.Block,
+            _ => throw new ArgumentOutOfRangeException(nameof(rule), rule.Decision, "Unsupported remembered rule decision.")
+        };
+
+        return new DriverDecisionResponse(attempt.EventId, driverDecision, "rememberedIpRule");
     }
 
     public DriverDecisionResponse ApplyUserDecision(ProtectedConnectionAttempt attempt, UserDecisionKind decision)

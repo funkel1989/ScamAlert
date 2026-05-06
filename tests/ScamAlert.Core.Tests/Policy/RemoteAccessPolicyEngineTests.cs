@@ -37,6 +37,20 @@ public sealed class RemoteAccessPolicyEngineTests
         Assert.Null(response);
     }
 
+    [Fact]
+    public void EvaluateRememberedRuleThrowsForUnsupportedStoredDecision()
+    {
+        var attempt = CreateAttempt();
+        var rule = new RememberedIpRule(
+            SourceIp: attempt.SourceIp,
+            Decision: (DriverDecisionKind)999,
+            CreatedAt: DateTimeOffset.Parse("2026-05-06T12:00:00Z"),
+            UpdatedAt: DateTimeOffset.Parse("2026-05-06T12:01:00Z"));
+        var engine = new RemoteAccessPolicyEngine();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => engine.EvaluateRememberedRule(attempt, rule));
+    }
+
     [Theory]
     [InlineData(TimeoutPolicy.AllowOnTimeout, DriverDecisionKind.Allow)]
     [InlineData(TimeoutPolicy.BlockOnTimeout, DriverDecisionKind.Block)]

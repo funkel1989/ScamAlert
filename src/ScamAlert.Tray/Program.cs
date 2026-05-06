@@ -1,16 +1,32 @@
 namespace ScamAlert.Tray;
 
-static class Program
+internal static class Program
 {
-    /// <summary>
-    ///  The main entry point for the application.
-    /// </summary>
     [STAThread]
-    static void Main()
+    private static void Main()
     {
-        // To customize application configuration such as set high DPI settings or default font,
-        // see https://aka.ms/applicationconfiguration.
         ApplicationConfiguration.Initialize();
-        Application.Run(new Form1());
-    }    
+
+        using var notifyIcon = new NotifyIcon
+        {
+            Text = "ScamAlert",
+            Visible = true,
+            Icon = SystemIcons.Shield,
+            ContextMenuStrip = new ContextMenuStrip()
+        };
+
+        notifyIcon.ContextMenuStrip.Items.Add("Exit", null, (_, _) => Application.Exit());
+
+        var uiContext = SynchronizationContext.Current;
+        if (uiContext is null)
+        {
+            uiContext = new WindowsFormsSynchronizationContext();
+            SynchronizationContext.SetSynchronizationContext(uiContext);
+        }
+
+        using var promptServer = new PromptPipeServer(uiContext);
+        promptServer.Start();
+
+        Application.Run();
+    }
 }

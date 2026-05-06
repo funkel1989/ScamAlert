@@ -12,8 +12,8 @@ Pipe name: `scamalert-driver-events`
 - The response is a single JSON object followed by LF.
 - Readers should also accept CRLF line endings.
 - The request must not include a policy field. Policy is owned by the broker.
-- Recommended maximum frame size is 16 KiB. A reader that receives a frame larger than its limit should treat it as malformed, close the pipe, and apply its fallback behavior.
-- Malformed JSON, unknown enum values, blank frames, and partial frames that do not complete before timeout should be treated as protocol failures. The broker should log the failure and close that pipe connection so the next driver event can connect.
+- Maximum request frame size is 16 KiB before the LF terminator. The broker enforces this while reading the frame and closes the pipe without a response if the limit is exceeded.
+- Malformed JSON, invalid UTF-8, unknown enum values, protected-service/destination-port mismatches, blank frames, and partial frames that do not complete before timeout should be treated as protocol failures. The broker should log the failure and close that pipe connection so the next driver event can connect.
 
 ## Request
 
@@ -31,6 +31,8 @@ Fields:
 - `destinationPort`: local protected destination port.
 - `protectedService`: protected service name such as `rdp`, `ssh`, or `telnet`.
 
+The broker rejects requests where `protectedService` is not one of the known protected services or where `destinationPort` does not map to the same service.
+
 ## Response
 
 Response JSON:
@@ -44,6 +46,8 @@ Fields:
 - `observedEventId`: the request `eventId` the broker evaluated.
 - `decision`: `allow` or `block`.
 - `reason`: broker reason for the decision.
+
+The driver or bridge must verify that `observedEventId` matches the request `eventId`. A mismatch is a protocol failure and must not be applied as the decision for the pending WFP authorization.
 
 ## Timeout And Fallback
 

@@ -64,6 +64,12 @@ try
         return PipeProtocolFailureExitCode;
     }
 
+    if (response.ObservedEventId != attempt.EventId)
+    {
+        Console.Error.WriteLine("Broker pipe returned a response for a different event.");
+        return PipeProtocolFailureExitCode;
+    }
+
     Console.WriteLine(JsonSerializer.Serialize(response, SignalJson.Options));
     return 0;
 }

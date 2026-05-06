@@ -8,6 +8,7 @@ The real WFP driver monitor is not wired into the app yet. For now, use `ScamAle
 
 - `src/ScamAlert.Broker` - background broker that receives driver events, applies local policy, talks to the tray UI, and writes local signals.
 - `src/ScamAlert.Tray` - Windows tray app and decision prompt UI.
+- `src/ScamAlert.Api` - ASP.NET Core API host for controller-based endpoints.
 - `tools/ScamAlert.DriverSimulator` - command-line simulator for inbound protected connection attempts.
 - `src/ScamAlert.Contracts` - shared contract types and JSON settings.
 - `src/ScamAlert.Core` - policy, remembered rules, settings, and signal writing.
@@ -44,7 +45,7 @@ The tray app shows a shield icon in the Windows system tray. It may be hidden in
 
 ## Launch From The Terminal
 
-Open two PowerShell windows from the repo root.
+Open two or three PowerShell windows from the repo root.
 
 Window 1:
 
@@ -58,7 +59,13 @@ Window 2:
 dotnet run --project src/ScamAlert.Tray/ScamAlert.Tray.csproj
 ```
 
-Leave both running while testing.
+Optional Window 3 (API host):
+
+```powershell
+dotnet run --project src/ScamAlert.Api/ScamAlert.Api.csproj
+```
+
+Leave broker/tray running while testing. Run the API host when developing controller endpoints.
 
 ## Simulate An Inbound Attempt
 

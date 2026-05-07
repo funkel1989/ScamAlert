@@ -4,6 +4,11 @@ public sealed class LoggingNotificationGateway(ILogger<LoggingNotificationGatewa
 {
     public Task<GatewayResult> NotifyContactAsync(ContactNotification notification, CancellationToken cancellationToken)
     {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Task.FromCanceled<GatewayResult>(cancellationToken);
+        }
+
         logger.LogInformation(
             "Notify contact {ContactId} ({PhoneNumber}) for alert {AlertId}: {Message}",
             notification.ContactId,

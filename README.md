@@ -9,6 +9,7 @@ The real WFP driver monitor is not wired into the app yet. For now, use `ScamAle
 - `src/ScamAlert.Broker` - background broker that receives driver events, applies local policy, talks to the tray UI, and writes local signals.
 - `src/ScamAlert.Tray` - Windows tray app and decision prompt UI.
 - `src/ScamAlert.Api` - ASP.NET Core API host for controller-based endpoints.
+- `src/ScamAlert.Data` - EF Core data layer (SQLite) for customers, subscriptions, contacts, devices, alerts, and notification attempts.
 - `tools/ScamAlert.DriverSimulator` - command-line simulator for inbound protected connection attempts.
 - `src/ScamAlert.Contracts` - shared contract types and JSON settings.
 - `src/ScamAlert.Core` - policy, remembered rules, settings, and signal writing.
@@ -66,6 +67,30 @@ dotnet run --project src/ScamAlert.Api/ScamAlert.Api.csproj
 ```
 
 Leave broker/tray running while testing. Run the API host when developing controller endpoints.
+
+## API Quick Start
+
+Run the API:
+
+```powershell
+dotnet run --project src/ScamAlert.Api/ScamAlert.Api.csproj
+```
+
+Create a customer with contacts/devices:
+
+```powershell
+curl -X POST "http://localhost:5000/api/customers" `
+  -H "Content-Type: application/json" `
+  -d "{\"name\":\"Contoso\",\"email\":\"owner@contoso.com\",\"planCode\":\"pro\",\"contacts\":[{\"fullName\":\"Primary Admin\",\"phoneNumber\":\"+15555550100\",\"escalationOrder\":1},{\"fullName\":\"Secondary Admin\",\"phoneNumber\":\"+15555550101\",\"escalationOrder\":2}],\"devices\":[{\"deviceName\":\"Reception PC\",\"externalDeviceId\":\"device-001\"}]}"
+```
+
+Raise an alert and simulate acknowledgment at escalation step 2:
+
+```powershell
+curl -X POST "http://localhost:5000/api/alerts" `
+  -H "Content-Type: application/json" `
+  -d "{\"externalDeviceId\":\"device-001\",\"sourceIp\":\"203.0.113.10\",\"destinationPort\":3389,\"service\":\"rdp\",\"simulateAcknowledgeAtEscalationOrder\":2}"
+```
 
 ## Simulate An Inbound Attempt
 

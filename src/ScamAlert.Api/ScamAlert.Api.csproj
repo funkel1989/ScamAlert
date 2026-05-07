@@ -13,6 +13,7 @@
   <ItemGroup>
     <ProjectReference Include="..\ScamAlert.Core\ScamAlert.Core.csproj" />
     <ProjectReference Include="..\ScamAlert.Contracts\ScamAlert.Contracts.csproj" />
+    <ProjectReference Include="..\ScamAlert.Data\ScamAlert.Data.csproj" />
   </ItemGroup>
 
 </Project>

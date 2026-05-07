@@ -17,6 +17,13 @@ public sealed class CustomersController(ScamAlertDbContext dbContext) : BaseApiC
             return BadRequest("At least one contact is required.");
         }
 
+        if (request.Contacts
+            .GroupBy(x => x.EscalationOrder)
+            .Any(x => x.Count() > 1))
+        {
+            return BadRequest("Contacts must have distinct escalation order values.");
+        }
+
         if (request.Devices.Count == 0)
         {
             return BadRequest("At least one monitored device is required.");

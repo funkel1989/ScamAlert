@@ -24,7 +24,7 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<ScamAlertDbContext>();
-    dbContext.Database.EnsureCreated();
+    dbContext.Database.Migrate();
 }
 
 // Configure the HTTP request pipeline.

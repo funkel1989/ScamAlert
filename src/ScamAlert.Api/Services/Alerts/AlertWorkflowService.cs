@@ -58,29 +58,36 @@ public sealed class AlertWorkflowService(
 
         foreach (var contact in contacts)
         {
-            var gatewayResult = await notificationGateway.NotifyContactAsync(
-                new ContactNotification(
-                    alert.Id,
-                    contact.Id,
-                    contact.FullName,
-                    contact.PhoneNumber,
-                    $"Suspicious remote-access attempt from {request.SourceIp} to port {request.DestinationPort} ({request.Service})."),
-                cancellationToken);
-
-            var simulatedAcknowledged = request.SimulateAcknowledgeAtEscalationOrder == contact.EscalationOrder;
-            var acknowledged = gatewayResult.Acknowledged || simulatedAcknowledged;
-
-            dbContext.NotificationAttempts.Add(new NotificationAttempt
+            var attempt = new NotificationAttempt
             {
                 Id = Guid.NewGuid(),
                 AlertEventId = alert.Id,
                 ContactId = contact.Id,
                 Channel = "twilio",
-                Outcome = acknowledged ? NotificationOutcome.Acknowledged : NotificationOutcome.NoResponse,
-                ProviderMessageId = gatewayResult.ProviderMessageId,
-                Notes = gatewayResult.Notes,
+                Outcome = NotificationOutcome.NoResponse,
+                AcknowledgmentToken = CreateAckToken(),
                 AttemptedUtc = DateTimeOffset.UtcNow
-            });
+            };
+            dbContext.NotificationAttempts.Add(attempt);
+
+            var gatewayResult = await notificationGateway.NotifyContactAsync(
+                new ContactNotification(
+                    attempt.Id,
+                    alert.Id,
+                    contact.Id,
+                    contact.FullName,
+                    contact.PhoneNumber,
+                    $"Suspicious remote-access attempt from {request.SourceIp} to port {request.DestinationPort} ({request.Service}).",
+                    attempt.AcknowledgmentToken!),
+                cancellationToken);
+
+            var simulatedAcknowledged = request.SimulateAcknowledgeAtEscalationOrder == contact.EscalationOrder;
+            var acknowledged = gatewayResult.Acknowledged || simulatedAcknowledged;
+
+            attempt.Outcome = acknowledged ? NotificationOutcome.Acknowledged : NotificationOutcome.NoResponse;
+            attempt.ProviderMessageId = gatewayResult.ProviderMessageId;
+            attempt.Notes = gatewayResult.Notes;
+            attempt.AcknowledgedUtc = acknowledged ? DateTimeOffset.UtcNow : null;
 
             if (acknowledged)
             {
@@ -99,5 +106,10 @@ public sealed class AlertWorkflowService(
 
         await dbContext.SaveChangesAsync(cancellationToken);
         return alert;
+    }
+
+    private static string CreateAckToken()
+    {
+        return Guid.NewGuid().ToString("N")[..6].ToUpperInvariant();
     }
 }

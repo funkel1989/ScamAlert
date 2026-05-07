@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using ScamAlert.Api.Services.Alerts;
 using ScamAlert.Api.Services.Notifications;
 using ScamAlert.Data;
@@ -17,7 +18,20 @@ builder.Services.AddDbContext<ScamAlertDbContext>(options =>
     options.UseSqlite(connectionString);
 });
 builder.Services.AddScoped<AlertWorkflowService>();
-builder.Services.AddScoped<INotificationGateway, LoggingNotificationGateway>();
+builder.Services.Configure<TwilioOptions>(builder.Configuration.GetSection(TwilioOptions.SectionName));
+builder.Services.AddHttpClient<TwilioNotificationGateway>();
+builder.Services.AddScoped<LoggingNotificationGateway>();
+builder.Services.AddScoped<INotificationGateway>(provider =>
+{
+    var twilioOptions = provider.GetRequiredService<IOptions<TwilioOptions>>().Value;
+    var isConfigured = !string.IsNullOrWhiteSpace(twilioOptions.AccountSid)
+        && !string.IsNullOrWhiteSpace(twilioOptions.AuthToken)
+        && !string.IsNullOrWhiteSpace(twilioOptions.FromPhoneNumber);
+
+    return isConfigured
+        ? provider.GetRequiredService<TwilioNotificationGateway>()
+        : provider.GetRequiredService<LoggingNotificationGateway>();
+});
 
 var app = builder.Build();
 

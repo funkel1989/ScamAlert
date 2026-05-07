@@ -25,17 +25,17 @@ public sealed class AlertWorkflowService(
             throw new InvalidOperationException($"No active device found for external id '{request.ExternalDeviceId}'.");
         }
 
+        var now = DateTimeOffset.UtcNow;
         var activeSubscription = device.Customer.Subscriptions.Any(x =>
             x.Status is SubscriptionStatus.Active or SubscriptionStatus.Trial &&
-            x.StartsUtc <= DateTimeOffset.UtcNow &&
-            (x.EndsUtc is null || x.EndsUtc >= DateTimeOffset.UtcNow));
+            x.StartsUtc <= now &&
+            (x.EndsUtc is null || x.EndsUtc >= now));
 
         if (!activeSubscription)
         {
             throw new InvalidOperationException($"Customer '{device.CustomerId}' has no active or trial subscription.");
         }
 
-        var now = DateTimeOffset.UtcNow;
         var alert = new AlertEvent
         {
             Id = Guid.NewGuid(),

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using ScamAlert.Api.HostedServices;
 using ScamAlert.Api.Services.Alerts;
 using ScamAlert.Api.Services.Notifications;
 using ScamAlert.Data;
@@ -17,7 +18,14 @@ builder.Services.AddDbContext<ScamAlertDbContext>(options =>
         ?? "Data Source=scamalert.db";
     options.UseSqlite(connectionString);
 });
+builder.Services.Configure<AlertsOptions>(builder.Configuration.GetSection(AlertsOptions.SectionName));
+builder.Services.AddScoped<AlertContactNotifier>();
 builder.Services.AddScoped<AlertWorkflowService>();
+builder.Services.AddScoped<AlertEscalationProcessor>();
+if (!builder.Environment.IsEnvironment("Testing"))
+{
+    builder.Services.AddHostedService<AlertEscalationWorker>();
+}
 builder.Services.Configure<TwilioOptions>(builder.Configuration.GetSection(TwilioOptions.SectionName));
 builder.Services.AddHttpClient<TwilioNotificationGateway>();
 builder.Services.AddScoped<LoggingNotificationGateway>();
@@ -47,10 +55,15 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-app.UseHttpsRedirection();
+if (!app.Environment.IsEnvironment("Testing"))
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseAuthorization();
 
 app.MapControllers();
 
 app.Run();
+
+public partial class Program;

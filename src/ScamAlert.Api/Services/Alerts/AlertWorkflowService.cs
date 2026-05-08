@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using ScamAlert.Api.Contracts;
-using ScamAlert.Api.Services.Notifications;
 using ScamAlert.Data;
 using ScamAlert.Data.Entities;
 using ScamAlert.Data.Enums;
@@ -9,7 +8,7 @@ namespace ScamAlert.Api.Services.Alerts;
 
 public sealed class AlertWorkflowService(
     ScamAlertDbContext dbContext,
-    INotificationGateway notificationGateway)
+    AlertContactNotifier contactNotifier)
 {
     public async Task<AlertEvent> RaiseAlertAsync(RaiseAlertRequest request, CancellationToken cancellationToken)
     {
@@ -27,7 +26,7 @@ public sealed class AlertWorkflowService(
 
         var now = DateTimeOffset.UtcNow;
         var activeSubscription = device.Customer.Subscriptions.Any(x =>
-            x.Status is SubscriptionStatus.Active or SubscriptionStatus.Trial &&
+            (x.Status == SubscriptionStatus.Active || x.Status == SubscriptionStatus.Trial) &&
             x.StartsUtc <= now &&
             (x.EndsUtc is null || x.EndsUtc >= now));
 
@@ -35,6 +34,27 @@ public sealed class AlertWorkflowService(
         {
             throw new InvalidOperationException($"Customer '{device.CustomerId}' has no active or trial subscription.");
         }
+
+        if (request.ClientEventId is { } clientEventId)
+        {
+            var existing = await dbContext.AlertEvents
+                .AsNoTracking()
+                .SingleOrDefaultAsync(
+                    x => x.DeviceId == device.Id && x.ClientEventId == clientEventId,
+                    cancellationToken);
+
+            if (existing is not null)
+            {
+                return await dbContext.AlertEvents
+                    .Include(x => x.NotificationAttempts)
+                    .SingleAsync(x => x.Id == existing.Id, cancellationToken);
+            }
+        }
+
+        var contacts = device.Customer.Contacts
+            .Where(x => x.IsActive)
+            .OrderBy(x => x.EscalationOrder)
+            .ToList();
 
         var alert = new AlertEvent
         {
@@ -44,6 +64,7 @@ public sealed class AlertWorkflowService(
             SourceIp = request.SourceIp,
             DestinationPort = request.DestinationPort,
             Service = request.Service,
+            ClientEventId = request.ClientEventId,
             ResolutionStatus = AlertResolutionStatus.Pending,
             CreatedUtc = now,
             UpdatedUtc = now
@@ -51,65 +72,34 @@ public sealed class AlertWorkflowService(
 
         dbContext.AlertEvents.Add(alert);
 
-        var contacts = device.Customer.Contacts
-            .Where(x => x.IsActive)
-            .OrderBy(x => x.EscalationOrder)
-            .ToList();
-
-        foreach (var contact in contacts)
+        if (contacts.Count == 0)
         {
-            var attempt = new NotificationAttempt
+            alert.ResolutionStatus = AlertResolutionStatus.TimedOut;
+            alert.UpdatedUtc = now;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return alert;
+        }
+
+        var minOrder = contacts[0].EscalationOrder;
+        var firstTier = contacts.Where(x => x.EscalationOrder == minOrder).ToList();
+
+        foreach (var contact in firstTier)
+        {
+            if (await contactNotifier.TryNotifyAsync(
+                    alert,
+                    contact,
+                    request.SimulateAcknowledgeAtEscalationOrder,
+                    now,
+                    cancellationToken))
             {
-                Id = Guid.NewGuid(),
-                AlertEventId = alert.Id,
-                ContactId = contact.Id,
-                Channel = "twilio",
-                Outcome = NotificationOutcome.NoResponse,
-                AcknowledgmentToken = CreateAckToken(),
-                AttemptedUtc = DateTimeOffset.UtcNow
-            };
-            dbContext.NotificationAttempts.Add(attempt);
-
-            var gatewayResult = await notificationGateway.NotifyContactAsync(
-                new ContactNotification(
-                    attempt.Id,
-                    alert.Id,
-                    contact.Id,
-                    contact.FullName,
-                    contact.PhoneNumber,
-                    $"Suspicious remote-access attempt from {request.SourceIp} to port {request.DestinationPort} ({request.Service}).",
-                    attempt.AcknowledgmentToken!),
-                cancellationToken);
-
-            var simulatedAcknowledged = request.SimulateAcknowledgeAtEscalationOrder == contact.EscalationOrder;
-            var acknowledged = gatewayResult.Acknowledged || simulatedAcknowledged;
-
-            attempt.Outcome = acknowledged ? NotificationOutcome.Acknowledged : NotificationOutcome.NoResponse;
-            attempt.ProviderMessageId = gatewayResult.ProviderMessageId;
-            attempt.Notes = gatewayResult.Notes;
-            attempt.AcknowledgedUtc = acknowledged ? DateTimeOffset.UtcNow : null;
-
-            if (acknowledged)
-            {
-                alert.AcknowledgedByContactId = contact.Id;
-                alert.ResolutionStatus = AlertResolutionStatus.Acknowledged;
-                alert.UpdatedUtc = DateTimeOffset.UtcNow;
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return alert;
             }
         }
 
-        alert.ResolutionStatus = contacts.Count > 0
-            ? AlertResolutionStatus.Escalated
-            : AlertResolutionStatus.TimedOut;
-        alert.UpdatedUtc = DateTimeOffset.UtcNow;
-
+        alert.ResolutionStatus = AlertResolutionStatus.Pending;
+        alert.UpdatedUtc = now;
         await dbContext.SaveChangesAsync(cancellationToken);
         return alert;
-    }
-
-    private static string CreateAckToken()
-    {
-        return Guid.NewGuid().ToString("N")[..6].ToUpperInvariant();
     }
 }

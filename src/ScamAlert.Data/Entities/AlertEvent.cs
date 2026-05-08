@@ -10,6 +10,8 @@ public sealed class AlertEvent
     public string SourceIp { get; set; } = string.Empty;
     public int DestinationPort { get; set; }
     public string Service { get; set; } = string.Empty;
+    /// <summary>Optional id from the client (e.g. broker attempt event id) for idempotent alert creation.</summary>
+    public Guid? ClientEventId { get; set; }
     public AlertResolutionStatus ResolutionStatus { get; set; }
     public Guid? AcknowledgedByContactId { get; set; }
     public DateTimeOffset CreatedUtc { get; set; }

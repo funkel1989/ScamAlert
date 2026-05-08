@@ -11,7 +11,8 @@ The real WFP driver monitor is not wired into the app yet. For now, use `ScamAle
 - [x] API endpoints for customer creation and alert raising.
 - [x] EF Core SQLite persistence for customers, subscriptions, contacts, devices, alerts, and notification attempts.
 - [x] Twilio-ready SMS notification gateway with DB-backed acknowledgment tokens and inbound acknowledgment webhook.
-- [ ] Background escalation worker (time-based primary-to-secondary escalation after no response).
+- [x] Background escalation worker (time-based primary-to-secondary escalation after no response).
+- [x] Broker cloud alert uplink (optional): deduped enqueue, durable outbox, HTTP retries, dead-letter on permanent failures.
 - [ ] Twilio voice-call workflow and richer retry policy.
 - [ ] WFP production monitor integration.
 
@@ -24,7 +25,8 @@ The real WFP driver monitor is not wired into the app yet. For now, use `ScamAle
 - `tools/ScamAlert.DriverSimulator` - command-line simulator for inbound protected connection attempts.
 - `src/ScamAlert.Contracts` - shared contract types and JSON settings.
 - `src/ScamAlert.Core` - policy, remembered rules, settings, and signal writing.
-- `tests/ScamAlert.Core.Tests` - unit tests for policy, persistence, named-pipe protocol, and signal contracts.
+- `tests/ScamAlert.Core.Tests` - unit tests for policy, persistence, named-pipe protocol, signal contracts, and cloud outbox helpers.
+- `tests/ScamAlert.Api.Tests` - API integration tests (WebApplicationFactory) for alert idempotency and escalation.
 
 ## Prerequisites
 
@@ -40,6 +42,7 @@ From the repo root:
 dotnet restore ScamAlert.sln
 dotnet build ScamAlert.sln
 dotnet test tests/ScamAlert.Core.Tests/ScamAlert.Core.Tests.csproj
+dotnet test tests/ScamAlert.Api.Tests/ScamAlert.Api.Tests.csproj
 ```
 
 ## Launch With Visual Studio
@@ -100,8 +103,10 @@ Raise an alert and simulate acknowledgment at escalation step 2:
 ```powershell
 curl -X POST "http://localhost:5000/api/alerts" `
   -H "Content-Type: application/json" `
-  -d "{\"externalDeviceId\":\"device-001\",\"sourceIp\":\"203.0.113.10\",\"destinationPort\":3389,\"service\":\"rdp\",\"simulateAcknowledgeAtEscalationOrder\":2}"
+  -d "{\"externalDeviceId\":\"device-001\",\"sourceIp\":\"203.0.113.10\",\"destinationPort\":3389,\"service\":\"rdp\",\"simulateAcknowledgeAtEscalationOrder\":2,\"clientEventId\":null}"
 ```
+
+Include a stable `clientEventId` (for example the broker attempt `EventId`) when callers may retry the same logical alert; duplicate posts with the same `clientEventId` for the same device return the existing alert without sending notifications again.
 
 ## Twilio SMS Configuration
 
@@ -170,6 +175,28 @@ Files:
 - `signals.jsonl` - observed attempts and user decision updates.
 - `settings.json` - local timeout behavior.
 - `remembered-rules.json` - remembered IP allow/block rules.
+- `cloud-alert-dedupe.json` - last cloud alert enqueue time per `(device, source IP, port)` for dedupe windowing (when cloud uplink is enabled).
+- `cloud-alerts-pending.jsonl` - pending outbound alert deliveries to the API.
+- `cloud-alerts-deadletter.jsonl` - deliveries that exceeded retries or failed with permanent HTTP errors.
+
+### Broker cloud uplink (`CloudAlerts`)
+
+Configure in `src/ScamAlert.Broker/appsettings.json` (or environment variables) to POST deduped `ObservedInboundAttempt` events to `POST /api/alerts`:
+
+- `CloudAlerts:Enabled` - set `true` to enqueue and deliver.
+- `CloudAlerts:BaseUrl` - API root (for example `http://localhost:5000`).
+- `CloudAlerts:ExternalDeviceId` - must match a device `externalDeviceId` registered for an active customer subscription.
+- `CloudAlerts:DedupeWindowSeconds` - suppress duplicate enqueues for the same `(ExternalDeviceId, source IP, destination port)` within this window.
+- `CloudAlerts:MaxDeliveryAttempts`, `InitialRetryDelaySeconds`, `MaxRetryDelaySeconds`, `PollIntervalSeconds` - outbound retry and polling behavior.
+
+The broker sends `clientEventId` equal to the observed attempt `EventId` so the API can treat retries as idempotent.
+
+### API alert escalation (`Alerts`)
+
+Configure in `src/ScamAlert.Api/appsettings.json`:
+
+- `Alerts:EscalationDelaySeconds` - wait time after a no-response notification before notifying the next escalation tier.
+- `Alerts:EscalationPollIntervalSeconds` - how often the background worker scans for due escalations.
 
 Inspect recent signals:
 

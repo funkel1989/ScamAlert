@@ -49,6 +49,9 @@ public sealed class ScamAlertDbContext(DbContextOptions<ScamAlertDbContext> opti
             entity.Property(x => x.SourceIp).HasMaxLength(64);
             entity.Property(x => x.Service).HasMaxLength(32);
             entity.HasIndex(x => new { x.DeviceId, x.CreatedUtc });
+            entity.HasIndex(x => new { x.DeviceId, x.ClientEventId })
+                .IsUnique()
+                .HasFilter("\"ClientEventId\" IS NOT NULL");
         });
 
         modelBuilder.Entity<NotificationAttempt>(entity =>

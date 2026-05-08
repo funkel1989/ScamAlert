@@ -4,6 +4,17 @@ ScamAlert is a Windows remote-access protection prototype. The current MVP watch
 
 The real WFP driver monitor is not wired into the app yet. For now, use `ScamAlert.DriverSimulator` to exercise the broker/tray flow.
 
+## Current Feature Status
+
+- [x] Broker + tray named-pipe prompt flow for simulated inbound attempts.
+- [x] Local JSONL signal writing and remembered allow/block IP rules.
+- [x] API endpoints for customer creation and alert raising.
+- [x] EF Core SQLite persistence for customers, subscriptions, contacts, devices, alerts, and notification attempts.
+- [x] Twilio-ready SMS notification gateway with DB-backed acknowledgment tokens and inbound acknowledgment webhook.
+- [ ] Background escalation worker (time-based primary-to-secondary escalation after no response).
+- [ ] Twilio voice-call workflow and richer retry policy.
+- [ ] WFP production monitor integration.
+
 ## Projects
 
 - `src/ScamAlert.Broker` - background broker that receives driver events, applies local policy, talks to the tray UI, and writes local signals.
@@ -91,6 +102,29 @@ curl -X POST "http://localhost:5000/api/alerts" `
   -H "Content-Type: application/json" `
   -d "{\"externalDeviceId\":\"device-001\",\"sourceIp\":\"203.0.113.10\",\"destinationPort\":3389,\"service\":\"rdp\",\"simulateAcknowledgeAtEscalationOrder\":2}"
 ```
+
+## Twilio SMS Configuration
+
+The API can send real SMS notifications through Twilio when credentials are configured. If Twilio settings are missing, the API falls back to logging-only notifications.
+
+Set these values in `src/ScamAlert.Api/appsettings.json` or environment variables:
+
+- `Twilio:AccountSid`
+- `Twilio:AuthToken`
+- `Twilio:FromPhoneNumber`
+- `Twilio:StatusCallbackBaseUrl` (public URL that Twilio can reach, for example an ngrok URL)
+
+Webhook endpoints used by Twilio:
+
+- `POST /api/webhooks/twilio/status` - delivery/failure callback updates `NotificationAttempt`.
+- `POST /api/webhooks/twilio/inbound-sms` - parses replies like `ACK ABC123` and marks the alert acknowledged.
+
+Current acknowledgment flow:
+
+1. `POST /api/alerts` creates an alert and notification attempts.
+2. Each SMS contains a unique `ACK <token>` instruction.
+3. Contact replies by SMS with the token.
+4. Inbound webhook resolves the attempt as acknowledged and sets alert status to `Acknowledged`.
 
 ## Simulate An Inbound Attempt
 

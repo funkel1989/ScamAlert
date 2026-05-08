@@ -6,11 +6,13 @@ public interface INotificationGateway
 }
 
 public sealed record ContactNotification(
+    Guid NotificationAttemptId,
     Guid AlertId,
     Guid ContactId,
     string ContactName,
     string PhoneNumber,
-    string Message);
+    string Message,
+    string AcknowledgmentToken);
 
 public sealed record GatewayResult(
     bool Acknowledged,

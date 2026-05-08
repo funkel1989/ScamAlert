@@ -56,7 +56,9 @@ public sealed class ScamAlertDbContext(DbContextOptions<ScamAlertDbContext> opti
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Channel).HasMaxLength(32);
             entity.Property(x => x.ProviderMessageId).HasMaxLength(100);
+            entity.Property(x => x.AcknowledgmentToken).HasMaxLength(32);
             entity.Property(x => x.Notes).HasMaxLength(500);
+            entity.HasIndex(x => x.AcknowledgmentToken).IsUnique();
             entity.HasIndex(x => new { x.AlertEventId, x.AttemptedUtc });
         });
     }

@@ -10,6 +10,8 @@ public sealed class NotificationAttempt
     public string Channel { get; set; } = string.Empty;
     public NotificationOutcome Outcome { get; set; }
     public string? ProviderMessageId { get; set; }
+    public string? AcknowledgmentToken { get; set; }
+    public DateTimeOffset? AcknowledgedUtc { get; set; }
     public string? Notes { get; set; }
     public DateTimeOffset AttemptedUtc { get; set; }
 

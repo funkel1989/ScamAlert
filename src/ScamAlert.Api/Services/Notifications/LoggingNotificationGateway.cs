@@ -10,11 +10,12 @@ public sealed class LoggingNotificationGateway(ILogger<LoggingNotificationGatewa
         }
 
         logger.LogInformation(
-            "Notify contact {ContactId} ({PhoneNumber}) for alert {AlertId}: {Message}",
+            "Notify contact {ContactId} ({PhoneNumber}) for alert {AlertId}: {Message}. Ack token: {AckToken}",
             notification.ContactId,
             notification.PhoneNumber,
             notification.AlertId,
-            notification.Message);
+            notification.Message,
+            notification.AcknowledgmentToken);
 
         return Task.FromResult(new GatewayResult(false, null, "No live provider configured."));
     }

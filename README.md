@@ -1,12 +1,13 @@
 # ScamAlert
 
-ScamAlert is a Windows remote-access protection prototype. The current MVP watches simulated inbound RDP, SSH, and Telnet attempts, asks the user for a decision through a tray UI, records local JSONL signals, and stores remembered IP decisions.
+ScamAlert is a Windows remote-access protection prototype. The normal local MVP watches simulated inbound RDP, SSH, and Telnet attempts, asks the user for a decision through a tray UI, records local JSONL signals, and stores remembered IP decisions.
 
-The real WFP driver monitor is not wired into the app yet. For now, use `ScamAlert.DriverSimulator` to exercise the broker/tray flow.
+This branch also includes the native Windows Filtering Platform (WFP) monitor and `ScamAlert.DriverBridge` path for dev-VM testing. Use `ScamAlert.DriverSimulator` for the fastest broker/tray workflow; use the WFP driver path only inside a test-signing Windows VM.
 
 ## Current Feature Status
 
 - [x] Broker + tray named-pipe prompt flow for simulated inbound attempts.
+- [x] Native WFP driver + DriverBridge dev path for RDP/SSH/Telnet attempts in a test VM.
 - [x] Local JSONL signal writing and remembered allow/block IP rules.
 - [x] API endpoints for customer creation and alert raising.
 - [x] EF Core SQLite persistence for customers, subscriptions, contacts, devices, alerts, and notification attempts.
@@ -14,14 +15,19 @@ The real WFP driver monitor is not wired into the app yet. For now, use `ScamAle
 - [x] Background escalation worker (time-based primary-to-secondary escalation after no response).
 - [x] Broker cloud alert uplink (optional): deduped enqueue, durable outbox, HTTP retries, dead-letter on permanent failures.
 - [ ] Twilio voice-call workflow and richer retry policy.
-- [ ] WFP production monitor integration.
+- [ ] Signed/packaged production WFP monitor installer.
 
 ## Projects
 
 - `src/ScamAlert.Broker` - background broker that receives driver events, applies local policy, talks to the tray UI, and writes local signals.
+- `src/ScamAlert.Broker.Client` - reusable named-pipe client used by the simulator and DriverBridge.
 - `src/ScamAlert.Tray` - Windows tray app and decision prompt UI.
+- `src/ScamAlert.DriverBridge` - user-mode worker that reads events from `\\.\ScamAlertWfp`, asks the broker for a decision, and completes the kernel event.
 - `src/ScamAlert.Api` - ASP.NET Core API host for controller-based endpoints.
 - `src/ScamAlert.Data` - EF Core data layer (SQLite) for customers, subscriptions, contacts, devices, alerts, and notification attempts.
+- `native/ScamAlert.WfpDriver` - native WFP callout driver for protected inbound ports.
+- `native/ScamAlert.Driver.Shared` - C-compatible IOCTL contract shared by the driver and managed bridge.
+- `scripts/driver` - host/VM setup, build, deploy, traffic prep, and diagnostic scripts for the WFP path.
 - `tools/ScamAlert.DriverSimulator` - command-line simulator for inbound protected connection attempts.
 - `src/ScamAlert.Contracts` - shared contract types and JSON settings.
 - `src/ScamAlert.Core` - policy, remembered rules, settings, and signal writing.
@@ -33,6 +39,7 @@ The real WFP driver monitor is not wired into the app yet. For now, use `ScamAle
 - Windows
 - .NET 10 SDK
 - Visual Studio 2022, optional but useful for running broker and tray together
+- Optional for native driver work: Visual Studio C++ tooling, Windows Driver Kit, Hyper-V, and a Windows test-signing VM. Do not enable test-signing on your daily workstation.
 
 ## Build And Test
 
@@ -41,8 +48,14 @@ From the repo root:
 ```powershell
 dotnet restore ScamAlert.sln
 dotnet build ScamAlert.sln
-dotnet test tests/ScamAlert.Core.Tests/ScamAlert.Core.Tests.csproj
-dotnet test tests/ScamAlert.Api.Tests/ScamAlert.Api.Tests.csproj
+dotnet test ScamAlert.sln
+```
+
+Optional native driver build from the repo root:
+
+```powershell
+scripts/driver/check-driver-prereqs.ps1
+scripts/driver/build-driver.ps1 -SkipRestore
 ```
 
 ## Launch With Visual Studio
@@ -58,7 +71,7 @@ If Visual Studio asks for a startup project instead, configure multiple startup 
 
 The tray app shows a shield icon in the Windows system tray. It may be hidden in the tray overflow menu.
 
-## Launch From The Terminal
+## Launch The Simulator Path
 
 Open two or three PowerShell windows from the repo root.
 
@@ -81,6 +94,8 @@ dotnet run --project src/ScamAlert.Api/ScamAlert.Api.csproj
 ```
 
 Leave broker/tray running while testing. Run the API host when developing controller endpoints.
+
+This path does not load the native driver and does not require the WDK.
 
 ## API Quick Start
 
@@ -162,6 +177,84 @@ Example response:
 
 If the tray is not running or the prompt times out, the MVP defaults to allow unless local settings say otherwise.
 
+## Run The WFP Driver Path In A Dev VM
+
+Use this path only for native driver validation. The host builds the driver; the VM runs it with test-signing enabled.
+
+One-time setup:
+
+```powershell
+scripts/driver/check-driver-prereqs.ps1
+scripts/driver/create-dev-vm.ps1 -IsoPath "D:\HyperV\ISOs\Win11_25H2_EnglishInternational_x64.iso"
+scripts/driver/finalize-dev-vm.ps1
+```
+
+Then copy `scripts/driver/configure-dev-vm-inside.ps1` into the VM, run it from an elevated PowerShell inside the VM, and reboot when prompted. If PowerShell Direct is available, the copy step can be run from the host:
+
+```powershell
+$cred = Get-Credential -UserName dev
+$session = New-PSSession -VMName ScamAlertDev -Credential $cred
+Copy-Item -ToSession $session -Path scripts/driver/configure-dev-vm-inside.ps1 -Destination C:\Users\dev\Desktop\configure-dev-vm-inside.ps1
+Remove-PSSession $session
+```
+
+After the VM is configured, verify host-to-VM access:
+
+```powershell
+scripts/driver/verify-vm-access.ps1
+```
+
+Build and deploy the driver/user-mode pieces from the host:
+
+```powershell
+scripts/driver/build-driver.ps1 -SkipRestore
+scripts/driver/deploy-driver-to-vm.ps1
+scripts/driver/prep-vm-for-traffic.ps1
+scripts/driver/deploy-userland-to-vm.ps1
+scripts/driver/deploy-tray-to-vm.ps1
+```
+
+Log in to the VM interactively so the tray app can run in the user session. Then generate traffic to the VM from the host or another machine:
+
+```powershell
+Test-NetConnection -ComputerName <vm-ip> -Port 3389
+```
+
+Protected ports are the same as the simulator path: `3389` for RDP, `22` for SSH, and `23` for Telnet.
+
+The WFP flow is:
+
+1. The native driver observes the inbound protected-port attempt.
+2. The driver queues a bounded kernel event and pends the WFP operation.
+3. `ScamAlert.DriverBridge` reads the event from `\\.\ScamAlertWfp`.
+4. DriverBridge sends the attempt to `ScamAlert.Broker` over `scamalert-driver-events`.
+5. The broker applies remembered rules or prompts through the tray.
+6. DriverBridge posts the allow/block decision back to the driver.
+7. The driver completes the pending WFP operation.
+
+Driver safety notes:
+
+- The control device is restricted to LocalSystem and Administrators.
+- Kernel event and pending-operation queues are bounded to protect nonpaged pool under traffic bursts.
+- The kernel timeout fail-blocks stale pending operations after 60 seconds.
+- DriverBridge allows by default if the broker pipe is unavailable, matching the current MVP fail policy.
+
+Driver diagnostics:
+
+```powershell
+$cred = Get-Credential -UserName dev
+Invoke-Command -VMName ScamAlertDev -Credential $cred -FilePath scripts/driver/probe-driver-stats.ps1
+```
+
+`probe-driver-stats.ps1` reports counters such as `ClassifyHits`, `EventsQueued`, `EventsDequeued`, `DecisionsAllowed`, `DecisionsBlocked`, `PendingOps`, `TimedOutFailBlock`, `EventsDropped`, and `PendingRejected`. `probe-driver-events.ps1` drains raw driver events and does not complete decisions, so use it only when the bridge is stopped or when intentionally inspecting low-level driver output.
+
+Detailed driver docs:
+
+- [Dev environment setup](docs/driver/dev-environment-setup.md) - host/VM setup, deployment, traffic test, and troubleshooting runbook.
+- [WDK setup](docs/driver/wdk-setup.md) - host tooling and VM test-signing requirements.
+- [WFP integration contract](docs/driver/wfp-integration-contract.md) - binary IOCTL and named-pipe broker contracts.
+- [WFP driver current state](docs/driver/wfp-driver-build-plan.md) - current implementation notes, verification checklist, and future work.
+
 ## Local Data Files
 
 Runtime data is stored under:
@@ -225,12 +318,9 @@ Use `BlockOnTimeout` instead of `AllowOnTimeout` to make unanswered prompts bloc
 
 - No prompt appears: confirm both `ScamAlert.Broker` and `ScamAlert.Tray` are running.
 - Simulator says the broker pipe is unavailable: start `ScamAlert.Broker`.
+- DriverBridge says the driver device is unavailable: confirm the `ScamAlertWfp` driver service is running inside the VM with `sc query ScamAlertWfp`.
+- `CreateFile('\\.\ScamAlertWfp')` fails with access denied: run the diagnostic or bridge process elevated; the driver device is restricted to Administrators and LocalSystem.
+- Driver stats show `EventsDropped` or `PendingRejected`: the bounded kernel queues are protecting the driver under burst traffic; check whether DriverBridge and Broker are running and keeping up.
 - Simulator returns `timeoutPolicy`: the broker did not get a valid tray decision before the prompt timeout.
 - Remembered decision keeps applying: delete `%LOCALAPPDATA%\ScamAlert\remembered-rules.json`.
 - No signal file exists: run at least one protected simulator command while the broker is running.
-
-## Actual Driver Monitor
-
-The planned production monitor is a Windows Filtering Platform driver plus a user-mode bridge. The implementation plan is in `docs/superpowers/plans/2026-05-06-scamalert-wfp-monitor.md`.
-
-Driver work needs a Windows test VM with the Windows Driver Kit installed. The current local MVP does not require the WDK.

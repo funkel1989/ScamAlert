@@ -3,10 +3,15 @@
 #include "PendingOps.h"
 #include "WfpMonitor.h"
 
+#include <wdmsec.h>
+
 static PDEVICE_OBJECT g_DeviceObject = nullptr;
 static UNICODE_STRING g_DeviceName    = RTL_CONSTANT_STRING(L"\\Device\\ScamAlertWfp");
 static UNICODE_STRING g_SymbolicLink  = RTL_CONSTANT_STRING(L"\\DosDevices\\ScamAlertWfp");
+static UNICODE_STRING g_DeviceSddl    = RTL_CONSTANT_STRING(L"D:P(A;;GA;;;SY)(A;;GA;;;BA)");
 static BOOLEAN        g_QueueInitialized = FALSE;
+static const GUID     g_DeviceClassGuid =
+    { 0x3f01cb56, 0xa822, 0x44d7, { 0x94, 0x7e, 0x5e, 0x12, 0x76, 0xbb, 0x40, 0xd9 } };
 
 static NTSTATUS ScamAlertCreateClose(
     _In_ PDEVICE_OBJECT DeviceObject,
@@ -69,7 +74,7 @@ static NTSTATUS ScamAlertDeviceControl(
         }
         else
         {
-            LONG64 counters[7] = {};
+            LONG64 counters[9] = {};
             ScamAlertGetMonitorCounters(counters);
 
             SCAMALERT_DRIVER_STATS* stats = static_cast<SCAMALERT_DRIVER_STATS*>(buffer);
@@ -79,7 +84,9 @@ static NTSTATUS ScamAlertDeviceControl(
             stats->PendOk              = static_cast<UINT64>(counters[3]);
             stats->AllowInjected       = static_cast<UINT64>(counters[4]);
             stats->BlockReleased       = static_cast<UINT64>(counters[5]);
-            stats->TimedOutFailOpen    = static_cast<UINT64>(counters[6]);
+            stats->TimedOutFailBlock   = static_cast<UINT64>(counters[6]);
+            stats->EventsDropped       = static_cast<UINT64>(counters[7]);
+            stats->PendingRejected     = static_cast<UINT64>(counters[8]);
 
             status = STATUS_SUCCESS;
             information = sizeof(SCAMALERT_DRIVER_STATS);
@@ -101,13 +108,15 @@ NTSTATUS ScamAlertCreateDevice(_In_ PDRIVER_OBJECT DriverObject)
     }
     g_QueueInitialized = TRUE;
 
-    status = IoCreateDevice(
+    status = IoCreateDeviceSecure(
         DriverObject,
         0,
         &g_DeviceName,
         FILE_DEVICE_UNKNOWN,
         FILE_DEVICE_SECURE_OPEN,
         FALSE,
+        &g_DeviceSddl,
+        &g_DeviceClassGuid,
         &g_DeviceObject);
 
     if (!NT_SUCCESS(status))
@@ -155,7 +164,7 @@ PDEVICE_OBJECT ScamAlertGetDeviceObject()
 VOID ScamAlertDeleteDevice()
 {
     // Drain pending classifies first so no callouts hold open handles
-    // when we tear the device down. PendingOps fail-opens any survivors.
+    // when we tear the device down. PendingOps fail-blocks any survivors.
     ScamAlertDestroyPendingOps();
 
     IoDeleteSymbolicLink(&g_SymbolicLink);

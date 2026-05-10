@@ -211,7 +211,9 @@ static volatile LONG64 g_StatsEventsQueued        = 0;
 static volatile LONG64 g_StatsPendOk              = 0;
 static volatile LONG64 g_StatsAllowInjected       = 0;
 static volatile LONG64 g_StatsBlockReleased       = 0;
-static volatile LONG64 g_StatsTimedOutFailOpen    = 0;
+static volatile LONG64 g_StatsTimedOutFailBlock   = 0;
+static volatile LONG64 g_StatsEventsDropped       = 0;
+static volatile LONG64 g_StatsPendingRejected     = 0;
 
 VOID ScamAlertGetMonitorCounters(_Out_ LONG64* out)
 {
@@ -221,12 +223,16 @@ VOID ScamAlertGetMonitorCounters(_Out_ LONG64* out)
     out[3] = g_StatsPendOk;
     out[4] = g_StatsAllowInjected;
     out[5] = g_StatsBlockReleased;
-    out[6] = g_StatsTimedOutFailOpen;
+    out[6] = g_StatsTimedOutFailBlock;
+    out[7] = g_StatsEventsDropped;
+    out[8] = g_StatsPendingRejected;
 }
 
 VOID ScamAlertBumpAllowInjected()    { InterlockedIncrement64(&g_StatsAllowInjected); }
 VOID ScamAlertBumpBlockReleased()    { InterlockedIncrement64(&g_StatsBlockReleased); }
-VOID ScamAlertBumpTimedOutFailOpen() { InterlockedIncrement64(&g_StatsTimedOutFailOpen); }
+VOID ScamAlertBumpTimedOutFailBlock(){ InterlockedIncrement64(&g_StatsTimedOutFailBlock); }
+VOID ScamAlertBumpEventsDropped()    { InterlockedIncrement64(&g_StatsEventsDropped); }
+VOID ScamAlertBumpPendingRejected()  { InterlockedIncrement64(&g_StatsPendingRejected); }
 
 // Returns TRUE if WFP gave us a packet that was injected by our own driver.
 // At ALE_AUTH_RECV_ACCEPT this is the second classify hit on a permitted
@@ -257,10 +263,11 @@ static VOID ScamAlertReadInterfaceIndices(
 }
 
 // Pends the operation so user mode can decide. Captures every NBL/offload
-// field we'll need to clone+reinject the inbound packet later. The event is
-// always queued for observability before we attempt to pend; if any step
-// fails we leave classifyOut on PERMIT (worst-case behavior is identical to
-// Milestone A observe-only).
+// field we'll need to clone+reinject the inbound packet later. For enforceable
+// events, the pending node is inserted before the event is exposed to user mode
+// so a fast bridge cannot complete an event before the kernel can find it.
+// If any step fails we leave classifyOut on PERMIT (worst-case behavior is
+// identical to Milestone A observe-only).
 static VOID ScamAlertPendForBrokerDecision(
     _In_ const SCAMALERT_CONNECTION_EVENT*       event,
     _In_ const FWPS_INCOMING_VALUES0*            inFixedValues,
@@ -272,24 +279,36 @@ static VOID ScamAlertPendForBrokerDecision(
     _In_ UINT16                                  layerId,
     _Inout_ FWPS_CLASSIFY_OUT0*                  classifyOut)
 {
-    if (NT_SUCCESS(ScamAlertQueueConnectionEvent(event)))
-    {
-        InterlockedIncrement64(&g_StatsEventsQueued);
-    }
-
-    if (layerData == nullptr) return;
-
-    if ((inMetaValues->currentMetadataValues & FWPS_METADATA_FIELD_COMPLETION_HANDLE) == 0 ||
+    if (layerData == nullptr ||
+        (inMetaValues->currentMetadataValues & FWPS_METADATA_FIELD_COMPLETION_HANDLE) == 0 ||
         (inMetaValues->currentMetadataValues & FWPS_METADATA_FIELD_IP_HEADER_SIZE) == 0 ||
         (inMetaValues->currentMetadataValues & FWPS_METADATA_FIELD_TRANSPORT_HEADER_SIZE) == 0 ||
         (inMetaValues->currentMetadataValues & FWPS_METADATA_FIELD_COMPARTMENT_ID) == 0)
     {
+        if (NT_SUCCESS(ScamAlertQueueConnectionEvent(event)))
+        {
+            InterlockedIncrement64(&g_StatsEventsQueued);
+        }
+        else
+        {
+            ScamAlertBumpEventsDropped();
+        }
+        return;
+    }
+
+    if (!ScamAlertHasPendingCapacity())
+    {
+        ScamAlertBumpPendingRejected();
         return;
     }
 
     SCAMALERT_PENDING_NODE* node = static_cast<SCAMALERT_PENDING_NODE*>(
         ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(SCAMALERT_PENDING_NODE), SCAMALERT_POOL_TAG));
-    if (node == nullptr) return;
+    if (node == nullptr)
+    {
+        ScamAlertBumpPendingRejected();
+        return;
+    }
 
     RtlCopyMemory(node->EventId, event->EventId, 16);
     node->NetBufferList       = static_cast<NET_BUFFER_LIST*>(layerData);
@@ -316,6 +335,7 @@ static VOID ScamAlertPendForBrokerDecision(
     {
         FwpsDereferenceNetBufferList0(node->NetBufferList, FALSE);
         ExFreePoolWithTag(node, SCAMALERT_POOL_TAG);
+        ScamAlertBumpPendingRejected();
         return;
     }
 
@@ -326,9 +346,18 @@ static VOID ScamAlertPendForBrokerDecision(
         FwpsCompleteOperation0(node->CompletionContext, nullptr);
         FwpsDereferenceNetBufferList0(node->NetBufferList, FALSE);
         ExFreePoolWithTag(node, SCAMALERT_POOL_TAG);
+        ScamAlertBumpPendingRejected();
         return;
     }
 
+    if (!NT_SUCCESS(ScamAlertQueueConnectionEvent(event)))
+    {
+        ScamAlertCancelPendingOp(node);
+        ScamAlertBumpEventsDropped();
+        return;
+    }
+
+    InterlockedIncrement64(&g_StatsEventsQueued);
     InterlockedIncrement64(&g_StatsPendOk);
 
     // Tell WFP to hold this connection while we await the broker's verdict.

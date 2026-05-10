@@ -9,7 +9,9 @@
 #   - PendOk               FwpsPendOperation0 + state insert succeeded
 #   - AllowInjected        ALLOW path: clone+reinject succeeded
 #   - BlockReleased        BLOCK path: FwpsCompleteOperation0(ctx, NULL)
-#   - TimedOutFailOpen     30s kernel timeout fired -> fail-open
+#   - TimedOutFailBlock    60s kernel timeout fired -> fail-block release
+#   - EventsDropped        event queue was full; classify failed open
+#   - PendingRejected      pending table was full/unavailable; classify failed open
 
 [CmdletBinding()]
 param(
@@ -59,7 +61,7 @@ public static class ScamAlertStatsProbe
         out uint lpBytesReturned,
         IntPtr lpOverlapped);
 
-    public const int StatsStructSize = 56; // 7 * sizeof(uint64_t)
+    public const int StatsStructSize = 72; // 9 * sizeof(uint64_t)
 }
 "@
 
@@ -99,7 +101,9 @@ try {
         PendOk              = [Runtime.InteropServices.Marshal]::ReadInt64($buf, 24)
         AllowInjected       = [Runtime.InteropServices.Marshal]::ReadInt64($buf, 32)
         BlockReleased       = [Runtime.InteropServices.Marshal]::ReadInt64($buf, 40)
-        TimedOutFailOpen    = [Runtime.InteropServices.Marshal]::ReadInt64($buf, 48)
+        TimedOutFailBlock   = [Runtime.InteropServices.Marshal]::ReadInt64($buf, 48)
+        EventsDropped       = [Runtime.InteropServices.Marshal]::ReadInt64($buf, 56)
+        PendingRejected     = [Runtime.InteropServices.Marshal]::ReadInt64($buf, 64)
     } | Format-List
 }
 finally {

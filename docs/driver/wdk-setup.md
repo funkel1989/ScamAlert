@@ -26,14 +26,18 @@ and test it inside a Windows 11 VM with test-signing enabled.
 
 ## Required In The VM
 
-- Windows 11 (Microsoft's free Win11 Dev VM `.vhdx` is the recommended
-  starting image).
+- Windows 11 installed from an evaluation ISO through
+  [`create-dev-vm.ps1`](../../scripts/driver/create-dev-vm.ps1), as
+  described in [dev environment setup](dev-environment-setup.md).
 - Test-signing enabled: `bcdedit /set testsigning on`.
 - Secure Boot turned off (set on the Hyper-V VM via
   `Set-VMFirmware -EnableSecureBoot Off`).
 - PowerShell remoting (`Enable-PSRemoting -Force`) so the host can
   drive the VM via `Invoke-Command -VMName`.
 - Stable computer name (we use `ScamAlertDev`).
+- The WDK is not required in the VM unless you intentionally build the
+  native driver inside the VM. The normal workflow builds on the host
+  and deploys the `.sys` to the VM.
 
 Do not enable test-signing on the host - it is a VM-only posture.
 
@@ -67,13 +71,25 @@ package even when the legacy path is also present.
 
 ## Validate The VM
 
-Run **inside the VM**:
+Run on the host after the VM has been created, finalized, and configured:
+
+```powershell
+scripts/driver/verify-vm-access.ps1
+```
+
+Expected:
+
+- test signing is enabled in the VM.
+- Secure Boot is off for the VM.
+- PowerShell Direct/remoting can reach the VM.
+- the VM network profile is usable for the scripted traffic tests.
+
+If you choose to build the driver inside the VM, install the same host
+tooling there and then run:
 
 ```powershell
 scripts/driver/check-driver-prereqs.ps1 -CheckTestSigning
 ```
-
-Expected: same as host plus `TestSigningEnabled = True`.
 
 ## Where To Get The WDK
 

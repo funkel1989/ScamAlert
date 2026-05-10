@@ -35,6 +35,9 @@ public static class NativeDriverIoctl
     public static readonly uint IoctlCompleteEvent =
         (DeviceType << 16) | (FileWriteData << 14) | (0x802u << 2) | MethodBuffered;
 
+    public static readonly uint IoctlGetStats =
+        (DeviceType << 16) | (FileReadData << 14) | (0x803u << 2) | MethodBuffered;
+
     public const int MaxIpChars = 46;
 }
 
@@ -61,4 +64,18 @@ public struct NativeConnectionDecision
     public byte[] EventId;
 
     public NativeDriverDecision Decision;
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
+public struct NativeDriverStats
+{
+    public ulong ClassifyEntered;
+    public ulong SelfInjectedSkipped;
+    public ulong EventsQueued;
+    public ulong PendOk;
+    public ulong AllowInjected;
+    public ulong BlockReleased;
+    public ulong TimedOutFailBlock;
+    public ulong EventsDropped;
+    public ulong PendingRejected;
 }

@@ -849,9 +849,14 @@ Create `native/ScamAlert.WfpDriver/Device.cpp`:
 ```cpp
 #include "Device.h"
 
+#include <wdmsec.h>
+
 static PDEVICE_OBJECT g_DeviceObject = nullptr;
 static UNICODE_STRING g_DeviceName = RTL_CONSTANT_STRING(L"\\Device\\ScamAlertWfp");
 static UNICODE_STRING g_SymbolicLink = RTL_CONSTANT_STRING(L"\\DosDevices\\ScamAlertWfp");
+static UNICODE_STRING g_DeviceSddl = RTL_CONSTANT_STRING(L"D:P(A;;GA;;;SY)(A;;GA;;;BA)");
+static const GUID g_DeviceClassGuid =
+    { 0x3f01cb56, 0xa822, 0x44d7, { 0x94, 0x7e, 0x5e, 0x12, 0x76, 0xbb, 0x40, 0xd9 } };
 
 static NTSTATUS ScamAlertCreateClose(
     _In_ PDEVICE_OBJECT DeviceObject,
@@ -866,13 +871,15 @@ static NTSTATUS ScamAlertCreateClose(
 
 NTSTATUS ScamAlertCreateDevice(_In_ PDRIVER_OBJECT DriverObject)
 {
-    NTSTATUS status = IoCreateDevice(
+    NTSTATUS status = IoCreateDeviceSecure(
         DriverObject,
         0,
         &g_DeviceName,
         FILE_DEVICE_UNKNOWN,
         FILE_DEVICE_SECURE_OPEN,
         FALSE,
+        &g_DeviceSddl,
+        &g_DeviceClassGuid,
         &g_DeviceObject);
 
     if (!NT_SUCCESS(status))

@@ -41,11 +41,18 @@ typedef struct SCAMALERT_PENDING_NODE
 
 NTSTATUS ScamAlertInitializePendingOps();
 VOID     ScamAlertDestroyPendingOps();
+BOOLEAN  ScamAlertHasPendingCapacity();
 
 // Insert a fully-populated node into the pending table. The caller must have
 // already called FwpsPendOperation0 and FwpsReferenceNetBufferList0; the
 // table assumes ownership of both for the rest of the node's lifetime.
 NTSTATUS ScamAlertAddPendingOp(_In_ SCAMALERT_PENDING_NODE* Node);
+
+// Roll back a node that was inserted into the pending table but cannot be
+// exposed to user mode. Removes the node, completes the held operation, and
+// releases the saved NBL reference without counting it as an allow/block
+// verdict.
+VOID ScamAlertCancelPendingOp(_In_ SCAMALERT_PENDING_NODE* Node);
 
 // User-mode IOCTL hand-off. Looks up the entry by EventId, removes it from
 // the pending list, and dispatches to the ALLOW (clone+reinject) or BLOCK

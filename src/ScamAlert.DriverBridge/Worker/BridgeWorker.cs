@@ -18,7 +18,6 @@ public sealed class BridgeWorker(
     ILogger<BridgeWorker> logger) : BackgroundService
 {
     private static readonly TimeSpan IdlePollDelay  = TimeSpan.FromMilliseconds(50);
-    private static readonly TimeSpan ReopenBackoff  = TimeSpan.FromSeconds(5);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -52,11 +51,12 @@ public sealed class BridgeWorker(
         }
         catch (Exception ex)
         {
+            var reopenBackoff = GetDeviceOpenRetryDelay();
             logger.LogWarning(ex,
                 "Driver device unavailable. Retrying in {DelaySeconds}s.",
-                ReopenBackoff.TotalSeconds);
+                reopenBackoff.TotalSeconds);
 
-            try { await Task.Delay(ReopenBackoff, cancellationToken); }
+            try { await Task.Delay(reopenBackoff, cancellationToken); }
             catch (OperationCanceledException) { /* shutdown */ }
 
             return false;
@@ -130,5 +130,11 @@ public sealed class BridgeWorker(
         {
             logger.LogError(ex, "Failed to post decision for event {EventId}.", decision.ObservedEventId);
         }
+    }
+
+    private TimeSpan GetDeviceOpenRetryDelay()
+    {
+        var seconds = options.CurrentValue.DeviceOpenRetryDelaySeconds;
+        return seconds > 0 ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(5);
     }
 }

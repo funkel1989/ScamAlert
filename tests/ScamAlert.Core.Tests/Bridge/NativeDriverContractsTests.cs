@@ -20,6 +20,13 @@ public sealed class NativeDriverContractsTests
     }
 
     [Fact]
+    public void NativeDriverStats_size_matches_native_layout()
+    {
+        // 9 * sizeof(uint64_t) = 72
+        Assert.Equal(72, Marshal.SizeOf<NativeDriverStats>());
+    }
+
+    [Fact]
     public void NativeProtectedService_values_match_native_enum()
     {
         Assert.Equal(1u, (uint)NativeProtectedService.Rdp);
@@ -46,5 +53,8 @@ public sealed class NativeDriverContractsTests
         //   = (0x8000 << 16) | (FILE_WRITE_DATA << 14) | (0x802 << 2) | METHOD_BUFFERED
         //   = 0x80002008 | 0x00008000 = 0x8000A008
         Assert.Equal(0x8000A008u, NativeDriverIoctl.IoctlCompleteEvent);
+
+        // CTL_CODE(0x8000, 0x803, METHOD_BUFFERED, FILE_READ_DATA)
+        Assert.Equal(0x8000600Cu, NativeDriverIoctl.IoctlGetStats);
     }
 }

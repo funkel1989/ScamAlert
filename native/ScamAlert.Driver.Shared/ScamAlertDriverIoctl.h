@@ -86,7 +86,9 @@ typedef struct SCAMALERT_DRIVER_STATS
     uint64_t PendOk;                // FwpsPendOperation0 + state insert succeeded
     uint64_t AllowInjected;         // FwpsInjectTransportReceiveAsync0 succeeded for ALLOW path
     uint64_t BlockReleased;         // FwpsCompleteOperation0(ctx, NULL) issued for BLOCK path
-    uint64_t TimedOutFailOpen;      // 30s kernel timeout fired -> fail-open inject
+    uint64_t TimedOutFailBlock;     // 60s kernel timeout fired -> fail-block release
+    uint64_t EventsDropped;         // event queue was full; classify failed open
+    uint64_t PendingRejected;       // pending table was full/unavailable; classify failed open
 } SCAMALERT_DRIVER_STATS;
 
 #pragma pack(pop)
@@ -95,3 +97,4 @@ typedef struct SCAMALERT_DRIVER_STATS
 // Marshal.SizeOf<NativeConnectionEvent>() and SizeOf<NativeConnectionDecision>().
 //   SCAMALERT_CONNECTION_EVENT    = 16 + 8 + 92 + 2 + 4 = 122 bytes
 //   SCAMALERT_CONNECTION_DECISION = 16 + 4               = 20  bytes
+//   SCAMALERT_DRIVER_STATS        = 9 * 8                = 72  bytes

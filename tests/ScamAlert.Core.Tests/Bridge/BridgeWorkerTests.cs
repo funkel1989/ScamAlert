@@ -104,6 +104,42 @@ public sealed class BridgeWorkerTests
         Assert.Equal(NativeDriverDecision.Allow, decision.Decision);
     }
 
+    [Fact]
+    public async Task Worker_uses_configured_device_open_retry_delay()
+    {
+        var fakeDevice = new FakeDriverDeviceClient
+        {
+            OpenFailuresRemaining = 1
+        };
+        var broker = new BrokerDriverPipeClient(
+            $"scamalert-unused-{Guid.NewGuid():N}",
+            connectionTimeout: TimeSpan.FromMilliseconds(100),
+            requestTimeout: TimeSpan.FromMilliseconds(100));
+
+        var optionsMonitor = new StaticOptionsMonitor<DriverBridgeOptions>(new DriverBridgeOptions
+        {
+            DevicePath = @"\\.\ScamAlertWfp",
+            BrokerPipeName = "unused",
+            DeviceOpenRetryDelaySeconds = 1
+        });
+
+        var worker = new BridgeWorker(fakeDevice, broker, optionsMonitor, NullLogger<BridgeWorker>.Instance);
+
+        await worker.StartAsync(CancellationToken.None);
+
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2.5);
+        while (fakeDevice.OpenAttempts < 2 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(25);
+        }
+
+        var openedAfterRetry = fakeDevice.IsOpen;
+        await worker.StopAsync(CancellationToken.None);
+
+        Assert.True(fakeDevice.OpenAttempts >= 2);
+        Assert.True(openedAfterRetry);
+    }
+
     private static async Task RunFakeBrokerAsync(
         string pipeName,
         CancellationToken cancellationToken,
@@ -141,9 +177,20 @@ public sealed class BridgeWorkerTests
     {
         public Queue<DriverEvent> QueuedEvents { get; } = new();
         public List<NativeConnectionDecision> PostedDecisions { get; } = new();
+        public int OpenFailuresRemaining { get; init; }
+        public int OpenAttempts { get; private set; }
         public bool IsOpen { get; private set; }
 
-        public void Open() => IsOpen = true;
+        public void Open()
+        {
+            OpenAttempts++;
+            if (OpenAttempts <= OpenFailuresRemaining)
+            {
+                throw new IOException("Simulated device open failure.");
+            }
+
+            IsOpen = true;
+        }
 
         public void Close() => IsOpen = false;
 

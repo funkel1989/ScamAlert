@@ -1,127 +1,114 @@
-# WFP Driver Build Plan (Execution Order)
+# WFP Driver Current State And Maintenance Notes
 
-This wraps the existing detailed plan at
-[docs/superpowers/plans/2026-05-06-scamalert-wfp-monitor.md](../superpowers/plans/2026-05-06-scamalert-wfp-monitor.md)
-with a current-state snapshot and a concrete execution order for the C++
-driver work funkel1989 is now responsible for.
+The original implementation plan is still available at
+[docs/superpowers/plans/2026-05-06-scamalert-wfp-monitor.md](../superpowers/plans/2026-05-06-scamalert-wfp-monitor.md).
+This file reflects the current branch state and the practical maintenance checklist for the native WFP path.
 
 ## Current State
 
-- `.NET` side: `ScamAlert.Api`, `ScamAlert.Broker`, `ScamAlert.Core`,
-  `ScamAlert.Data`, `ScamAlert.Tray`, `ScamAlert.Contracts` exist.
-- `tools/ScamAlert.DriverSimulator` exists (the thing being replaced).
-- `native/`, `scripts/driver/`, `src/ScamAlert.Broker.Client/`, and
-  `src/ScamAlert.DriverBridge/` do **not** exist yet.
-- WDK is **not** confirmed installed on the dev box. `fwpsk.h` /
-  `fwpkclnt.lib` need to resolve before any C++ build will succeed.
+- The managed application projects already exist: `ScamAlert.Api`, `ScamAlert.Broker`, `ScamAlert.Core`, `ScamAlert.Data`, `ScamAlert.Tray`, and `ScamAlert.Contracts`.
+- The legacy simulator remains at `tools/ScamAlert.DriverSimulator` for local broker/tray testing without a kernel driver.
+- The native driver lives under `native/ScamAlert.WfpDriver`.
+- Shared driver IOCTL contracts live under `native/ScamAlert.Driver.Shared`.
+- The user-mode driver bridge lives under `src/ScamAlert.DriverBridge`.
+- Host/VM helper scripts live under `scripts/driver`.
 
-## Two Milestones (Don't Skip A)
+The current driver observes inbound protected-port attempts at:
 
-**Milestone A - Observe-Only.** The driver detects inbound TCP attempts on
-3389 / 22 / 23, builds a `SCAMALERT_CONNECTION_EVENT`, queues it via IOCTL,
-and **always returns `FWP_ACTION_PERMIT`**. The bridge forwards the event
-to the broker over `scamalert-driver-events`. The broker's allow / block
-decision rides back over the IOCTL contract but the driver does not
-enforce it yet. This is the safe path that proves wiring without risking
-BSOD-on-bad-pend in a VM.
+- `FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4`
+- `FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6`
 
-**Milestone B - Pend-And-Decide Enforcement.** The driver pends initial
-ALE authorization with `FwpsPendOperation0`, waits for the broker decision
-(bounded), then completes with `FwpsCompleteOperation0`. This is what
-"pause port activations" really requires. It has packet clone / reinject
-nuances at `ALE_AUTH_RECV_ACCEPT` and is gated behind A passing in a VM.
+The protected ports are:
 
-The user's "detect and pause" wording maps to Milestone B, but the
-existing plan (and `wfp-integration-contract.md`) explicitly requires A
-first. We follow that staging.
+- `3389` for RDP
+- `22` for SSH
+- `23` for Telnet
 
-## Prereqs Before Any Driver Code Compiles
+For matching traffic, the driver queues a connection event, pends the WFP authorization, and waits for `ScamAlert.DriverBridge` to complete the allow/block decision. If the pending operation becomes stale, the kernel timeout fails it closed.
 
-1. WDK installed (matching the SDK already on disk).
-2. A Windows VM with test-signing on (`bcdedit /set testsigning on`,
-   reboot). Do not enable test-signing on the host workstation.
-3. Visual Studio 2022 with the C++ desktop workload + Spectre-mitigated
-   libs the WDK templates pull in.
-4. Run `scripts/driver/check-driver-prereqs.ps1` (built in Task 0) -
-   FwpskHeader / FwpkclntLibrary / TestSigning all green inside the VM.
+## Runtime Flow
 
-## Execution Order (Bottom-Up, Compile-At-Each-Step)
+1. The WFP callout sees an inbound protected-port authorization.
+2. The driver creates a bounded kernel event and a bounded pending-operation entry.
+3. `ScamAlert.DriverBridge` reads the event from `\\.\ScamAlertWfp`.
+4. DriverBridge sends a newline-delimited JSON request to `ScamAlert.Broker` on the `scamalert-driver-events` named pipe.
+5. The broker applies remembered rules or prompts through the tray.
+6. DriverBridge writes the allow/block decision back through `IOCTL_SCAMALERT_COMPLETE_EVENT`.
+7. The driver completes the pending WFP operation.
 
-The order below differs slightly from the source plan's numbering. It
-front-loads the bits that compile without WDK so progress is verifiable
-on the host machine, and isolates the kernel-only steps to the VM.
+The driver device is created with a security descriptor that restricts access to LocalSystem and administrators.
 
-### Host-Buildable (No WDK Needed)
+## Binary Contract Guard Rails
 
-1. **Task 0 - Prereq script + WDK setup doc.**
-   `scripts/driver/check-driver-prereqs.ps1`,
-   `docs/driver/wdk-setup.md`. No code yet.
-2. **Task 3 (header only) - Shared IOCTL header.**
-   `native/ScamAlert.Driver.Shared/ScamAlertDriverIoctl.h`. Pure C, no
-   WDK include path required at this point because nothing builds it yet.
-   Pair with the C# `NativeDriverContracts.cs` and the
-   `Marshal.SizeOf` layout test (sizes 120 / 20). Layout test is the
-   binary-contract guard rail.
-3. **Task 1 - `ScamAlert.Broker.Client` library.**
-   Wraps the existing `scamalert-driver-events` newline-JSON pipe so the
-   bridge and the simulator share the same transport.
-4. **Task 2 - `ScamAlert.DriverBridge` worker shell.**
-   Empty worker that we will give a device handle in Task 5.
-5. **Task 5 - DriverBridge device IOCTL client.**
-   `DeviceIoControl` against `\\.\ScamAlertWfp` for both
-   `IOCTL_SCAMALERT_GET_EVENT` and `IOCTL_SCAMALERT_COMPLETE_EVENT`,
-   marshalling to `NativeConnectionEvent` / `NativeConnectionDecision`.
-   Can be unit-tested with a fake handle abstraction; full E2E waits
-   for the driver.
+The native IOCTL contract is defined in:
 
-### VM-Only (WDK Required)
+- `native/ScamAlert.Driver.Shared/ScamAlertDriverIoctl.h`
 
-6. **Task 4 - WDK driver skeleton.**
-   `Driver.cpp` + `Device.cpp` + `Device.h` + INF + vcxproj. Just
-   `IRP_MJ_CREATE` / `IRP_MJ_CLOSE`, `IoCreateDevice`, symbolic link.
-   `sc create` and `\\.\ScamAlertWfp` should open from user mode.
-7. **Task 6 - IOCTL event queue.**
-   `EventQueue.h` / `EventQueue.cpp` (`LIST_ENTRY` + `KSPIN_LOCK`,
-   `ExAllocatePool2` with `'aScS'` tag), wire `IRP_MJ_DEVICE_CONTROL`
-   for the two IOCTLs. With the simulator pushing fake events into the
-   queue we can prove the bridge-driver boundary before WFP enters the
-   picture.
-8. **Task 7 - Observe-only WFP registration.**
-   `WfpMonitor.h` / `WfpMonitor.cpp`. Register IPv4 + IPv6 callouts at
-   `FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4 / V6` with the GUIDs from the
-   constants block, filter local ports 3389 / 22 / 23, build the event
-   and call `ScamAlertQueueConnectionEvent`, return
-   `FWP_ACTION_PERMIT`. Reauthorize events are skipped.
-9. **Task 8 - Install + VM validation.**
-   `bcdedit /set testsigning on`, `pnputil /add-driver`, `sc start`,
-   generate inbound RDP / SSH / Telnet, confirm the
-   driver-event -> bridge -> broker -> tray -> JSONL signal chain.
-10. **Task 9 - Enforcement gate doc.** Records the Milestone B
-    requirements so the next plan can be written cleanly.
+The managed mirror is defined in:
 
-## Risks / Watch-Outs
+- `src/ScamAlert.DriverBridge/Driver/NativeDriverContracts.cs`
 
-- **IPv4 byte order.** `ScamAlertWriteIpv4Source` uses
-  `RtlUlongByteSwap`. Task 8 validation must verify the printed IP is
-  not reversed; if it is on this WDK / runtime, drop the swap and re-run.
-- **Pool tag.** `'aScS'` is the agreed tag - keep it consistent so
-  `!poolused` triage works.
-- **Spinlock IRQL.** Allocation happens at `PASSIVE_LEVEL` before lock
-  acquisition. Don't move `ExAllocatePool2` inside the lock.
-- **Reauth filter.** The `FWP_CONDITION_FLAG_IS_REAUTHORIZE` check is
-  load-bearing. Without it we will spam events on every keepalive.
-- **`classifyOut->rights` check.** If `FWPS_RIGHT_ACTION_WRITE` is
-  unset, return without touching `actionType`.
-- **No cloud / UI in kernel.** All policy stays in the broker; the
-  driver only queues events and (in Milestone B) pends operations.
+The current structure sizes are:
 
-## Open Decisions Before I Start Code
+- `SCAMALERT_CONNECTION_EVENT`: 122 bytes
+- `SCAMALERT_CONNECTION_DECISION`: 20 bytes
+- `SCAMALERT_DRIVER_STATS`: 72 bytes
 
-1. WDK installed and a test-signing VM ready, yes / no?
-2. Stick to the Milestone-A-first staging (recommended) or take the
-   risk of jumping straight to pend-and-decide?
-3. Pool tag `'aScS'` and the device / DOS-link names from
-   `## Constants And Contract Values` are locked - confirm.
+These sizes are guarded by `NativeDriverContractsTests`. Any native layout change must update the managed mirror and tests in the same change.
 
-Once those are answered I will start at Task 0 and work down the order
-above, committing after each task as the source plan dictates.
+## Build And Deploy
+
+Host prerequisite validation:
+
+```powershell
+scripts/driver/check-driver-prereqs.ps1
+```
+
+Driver build:
+
+```powershell
+scripts/driver/build-driver.ps1 -SkipRestore
+```
+
+Development VM deploy:
+
+```powershell
+scripts/driver/deploy-driver-to-vm.ps1
+scripts/driver/prep-vm-for-traffic.ps1
+scripts/driver/deploy-userland-to-vm.ps1
+scripts/driver/deploy-tray-to-vm.ps1
+```
+
+The current development deploy uses the Service Control Manager to install and start the copied `.sys` file in the VM. It is not a signed package install flow.
+
+See [dev environment setup](dev-environment-setup.md) for the full host/VM runbook and [WDK setup](wdk-setup.md) for tooling requirements.
+
+## Verification Checklist
+
+Before treating the WFP path as healthy:
+
+```powershell
+scripts/driver/build-driver.ps1 -SkipRestore
+dotnet test ScamAlert.sln --no-restore /p:UseSharedCompilation=false
+scripts/driver/verify-vm-access.ps1
+$cred = Get-Credential -UserName dev
+Invoke-Command -VMName ScamAlertDev -Credential $cred -FilePath scripts/driver/probe-driver-stats.ps1
+```
+
+For an end-to-end traffic check, log into the VM interactively so the tray runs, generate traffic to the VM IP, and confirm `%LOCALAPPDATA%\ScamAlert\signals.jsonl` records the expected signal flow.
+
+## Current Watch-Outs
+
+- WFP classify callbacks have strict IRQL and memory constraints. Keep blocking work in user mode and keep kernel allocations bounded.
+- The event probe drains driver events and does not complete decisions. Use it only when the bridge is stopped or when intentionally inspecting raw driver output.
+- `EventsDropped`, `PendingRejected`, and `TimedOutFailBlock` are operational warning counters. Increasing values mean the bridge is falling behind, the queues are too small for the traffic pattern, or decisions are not returning.
+- If the driver will not unload or redeploy cleanly during testing, reboot the VM and rerun the deploy script.
+- The tray must run in an interactive user session. Broker and bridge processes can run without the tray, but user prompts cannot.
+
+## Future Work
+
+- Replace the raw development service install with a signed driver package and installer flow.
+- Add WinDbg/kernel crash-dump setup to the VM runbook.
+- Make the bridge/driver fail policy configurable after the MVP behavior is finalized.
+- Expand protected services beyond the current RDP/SSH/Telnet set.
+- Add stress tests around queue pressure, timeout behavior, and repeated driver reloads.

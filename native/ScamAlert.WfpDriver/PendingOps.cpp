@@ -28,11 +28,17 @@ constexpr LONGLONG ScamAlertPendingScanPeriodTicks =  1LL * 10000000LL;
 static LIST_ENTRY     g_PendingList;
 static KSPIN_LOCK     g_PendingLock;
 static BOOLEAN        g_PendingInitialized   = FALSE;
+static LONG           g_PendingCount         = 0;
+static constexpr LONG ScamAlertMaxPendingOps = 256;
 
 static KTIMER         g_TimeoutTimer;
 static KDPC           g_TimeoutDpc;
 static PIO_WORKITEM   g_TimeoutWorkItem      = nullptr;
 static PDEVICE_OBJECT g_PendingDeviceObject  = nullptr;
+static LIST_ENTRY     g_TimeoutList;
+static KSPIN_LOCK     g_TimeoutLock;
+static volatile LONG  g_TimeoutWorkQueued    = 0;
+static KEVENT         g_TimeoutWorkDrained;
 
 // Forward decls for paths invoked from both classify and timeout flows.
 static VOID ScamAlertReleasePendingNode(_In_ SCAMALERT_PENDING_NODE* node);
@@ -73,43 +79,52 @@ static VOID ScamAlertReleasePendingNode(_In_ SCAMALERT_PENDING_NODE* node)
     ExFreePoolWithTag(node, SCAMALERT_POOL_TAG);
 }
 
-// Container handed to the timeout work routine: an array of nodes that
-// have been removed from the global list and are ready to be fail-opened.
-typedef struct SCAMALERT_TIMEOUT_BATCH
-{
-    LIST_ENTRY Entry;
-    SCAMALERT_PENDING_NODE* Node;
-} SCAMALERT_TIMEOUT_BATCH;
-
 static VOID NTAPI ScamAlertTimeoutWorkRoutine(
     _In_ PDEVICE_OBJECT DeviceObject,
     _In_opt_ PVOID Context)
 {
     UNREFERENCED_PARAMETER(DeviceObject);
+    UNREFERENCED_PARAMETER(Context);
 
-    LIST_ENTRY* batchHead = static_cast<LIST_ENTRY*>(Context);
-    if (batchHead == nullptr) return;
-
-    while (!IsListEmpty(batchHead))
+    for (;;)
     {
-        PLIST_ENTRY entry = RemoveHeadList(batchHead);
-        SCAMALERT_TIMEOUT_BATCH* item = CONTAINING_RECORD(entry, SCAMALERT_TIMEOUT_BATCH, Entry);
-        SCAMALERT_PENDING_NODE* node = item->Node;
-        ExFreePoolWithTag(item, SCAMALERT_POOL_TAG);
+        LIST_ENTRY drainList;
+        InitializeListHead(&drainList);
 
-        if (node == nullptr) continue;
+        KIRQL oldIrql;
+        KeAcquireSpinLock(&g_TimeoutLock, &oldIrql);
+        while (!IsListEmpty(&g_TimeoutList))
+        {
+            PLIST_ENTRY entry = RemoveHeadList(&g_TimeoutList);
+            InsertTailList(&drainList, entry);
+        }
 
-        ScamAlertBumpTimedOutFailOpen();
+        if (IsListEmpty(&drainList))
+        {
+            InterlockedExchange(&g_TimeoutWorkQueued, 0);
+            KeSetEvent(&g_TimeoutWorkDrained, IO_NO_INCREMENT, FALSE);
+            KeReleaseSpinLock(&g_TimeoutLock, oldIrql);
+            return;
+        }
+        KeReleaseSpinLock(&g_TimeoutLock, oldIrql);
 
-        // Fail-BLOCK: cleanly release the held operation without trying
-        // to clone+reinject. Cloning a possibly-stale NBL after the TCP
-        // layer has given up is racy (caused IRQL_NOT_LESS_OR_EQUAL during
-        // testing). The IOCTL path handles the live-connection case; the
-        // timeout path is just a safety net to release the kernel hold.
-        ScamAlertBlockAndRelease(node);
+        while (!IsListEmpty(&drainList))
+        {
+            PLIST_ENTRY entry = RemoveHeadList(&drainList);
+            SCAMALERT_PENDING_NODE* node = CONTAINING_RECORD(entry, SCAMALERT_PENDING_NODE, Link);
+
+            if (node == nullptr) continue;
+
+            ScamAlertBumpTimedOutFailBlock();
+
+            // Fail-BLOCK: cleanly release the held operation without trying
+            // to clone+reinject. Cloning a possibly-stale NBL after the TCP
+            // layer has given up is racy (caused IRQL_NOT_LESS_OR_EQUAL during
+            // testing). The IOCTL path handles the live-connection case; the
+            // timeout path is just a safety net to release the kernel hold.
+            ScamAlertBlockAndRelease(node);
+        }
     }
-
-    ExFreePoolWithTag(batchHead, SCAMALERT_POOL_TAG);
 }
 
 static VOID NTAPI ScamAlertTimeoutDpcRoutine(
@@ -129,12 +144,8 @@ static VOID NTAPI ScamAlertTimeoutDpcRoutine(
     KeQueryTickCount(&now);
     LONGLONG nowIn100ns = now.QuadPart * KeQueryTimeIncrement();
 
-    LIST_ENTRY* batchHead = static_cast<LIST_ENTRY*>(
-        ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(LIST_ENTRY), SCAMALERT_POOL_TAG));
-    if (batchHead == nullptr) return;
-    InitializeListHead(batchHead);
-
-    BOOLEAN any = FALSE;
+    LIST_ENTRY expiredList;
+    InitializeListHead(&expiredList);
 
     KIRQL oldIrql;
     KeAcquireSpinLock(&g_PendingLock, &oldIrql);
@@ -148,27 +159,11 @@ static VOID NTAPI ScamAlertTimeoutDpcRoutine(
         if ((nowIn100ns - node->PendedAtTicks.QuadPart) > ScamAlertPendingTimeoutTicks)
         {
             RemoveEntryList(&node->Link);
-
-            SCAMALERT_TIMEOUT_BATCH* item = static_cast<SCAMALERT_TIMEOUT_BATCH*>(
-                ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(SCAMALERT_TIMEOUT_BATCH), SCAMALERT_POOL_TAG));
-            if (item != nullptr)
+            if (g_PendingCount > 0)
             {
-                item->Node = node;
-                InsertTailList(batchHead, &item->Entry);
-                any = TRUE;
+                --g_PendingCount;
             }
-            else
-            {
-                // Out of memory while building the batch: fall back to a
-                // blocking release inline (this still runs at DISPATCH but
-                // FwpsCompleteOperation0 tolerates it).
-                if (node->CompletionContext != nullptr)
-                {
-                    FwpsCompleteOperation0(node->CompletionContext, nullptr);
-                    node->CompletionContext = nullptr;
-                }
-                ScamAlertReleasePendingNode(node);
-            }
+            InsertTailList(&expiredList, &node->Link);
         }
 
         entry = next;
@@ -176,13 +171,23 @@ static VOID NTAPI ScamAlertTimeoutDpcRoutine(
 
     KeReleaseSpinLock(&g_PendingLock, oldIrql);
 
-    if (any && g_TimeoutWorkItem != nullptr)
+    if (IsListEmpty(&expiredList))
     {
-        IoQueueWorkItem(g_TimeoutWorkItem, ScamAlertTimeoutWorkRoutine, DelayedWorkQueue, batchHead);
+        return;
     }
-    else
+
+    KeAcquireSpinLock(&g_TimeoutLock, &oldIrql);
+    while (!IsListEmpty(&expiredList))
     {
-        ExFreePoolWithTag(batchHead, SCAMALERT_POOL_TAG);
+        PLIST_ENTRY expiredEntry = RemoveHeadList(&expiredList);
+        InsertTailList(&g_TimeoutList, expiredEntry);
+    }
+    KeReleaseSpinLock(&g_TimeoutLock, oldIrql);
+
+    if (InterlockedCompareExchange(&g_TimeoutWorkQueued, 1, 0) == 0)
+    {
+        KeClearEvent(&g_TimeoutWorkDrained);
+        IoQueueWorkItem(g_TimeoutWorkItem, ScamAlertTimeoutWorkRoutine, DelayedWorkQueue, nullptr);
     }
 }
 
@@ -192,11 +197,22 @@ NTSTATUS ScamAlertInitializePendingOps()
 
     InitializeListHead(&g_PendingList);
     KeInitializeSpinLock(&g_PendingLock);
+    g_PendingCount = 0;
+    InitializeListHead(&g_TimeoutList);
+    KeInitializeSpinLock(&g_TimeoutLock);
+    InterlockedExchange(&g_TimeoutWorkQueued, 0);
+    KeInitializeEvent(&g_TimeoutWorkDrained, NotificationEvent, TRUE);
 
     g_PendingDeviceObject = ScamAlertGetDeviceObject();
-    if (g_PendingDeviceObject != nullptr)
+    if (g_PendingDeviceObject == nullptr)
     {
-        g_TimeoutWorkItem = IoAllocateWorkItem(g_PendingDeviceObject);
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+
+    g_TimeoutWorkItem = IoAllocateWorkItem(g_PendingDeviceObject);
+    if (g_TimeoutWorkItem == nullptr)
+    {
+        return STATUS_INSUFFICIENT_RESOURCES;
     }
 
     KeInitializeTimer(&g_TimeoutTimer);
@@ -221,6 +237,7 @@ VOID ScamAlertDestroyPendingOps()
 
     if (g_TimeoutWorkItem != nullptr)
     {
+        KeWaitForSingleObject(&g_TimeoutWorkDrained, Executive, KernelMode, FALSE, nullptr);
         IoFreeWorkItem(g_TimeoutWorkItem);
         g_TimeoutWorkItem = nullptr;
     }
@@ -233,9 +250,22 @@ VOID ScamAlertDestroyPendingOps()
     while (!IsListEmpty(&g_PendingList))
     {
         PLIST_ENTRY entry = RemoveHeadList(&g_PendingList);
+        if (g_PendingCount > 0)
+        {
+            --g_PendingCount;
+        }
         InsertTailList(&drainList, entry);
     }
     KeReleaseSpinLock(&g_PendingLock, oldIrql);
+
+    KeAcquireSpinLock(&g_TimeoutLock, &oldIrql);
+    while (!IsListEmpty(&g_TimeoutList))
+    {
+        PLIST_ENTRY entry = RemoveHeadList(&g_TimeoutList);
+        InsertTailList(&drainList, entry);
+    }
+    KeReleaseSpinLock(&g_TimeoutLock, oldIrql);
+    g_PendingCount = 0;
 
     // On destroy we fail BLOCK rather than fail-open. Reinjecting through a
     // partially torn-down WFP stack is too risky; the user explicitly
@@ -248,11 +278,28 @@ VOID ScamAlertDestroyPendingOps()
     }
 }
 
+BOOLEAN ScamAlertHasPendingCapacity()
+{
+    if (!g_PendingInitialized) return FALSE;
+
+    BOOLEAN hasCapacity;
+    KIRQL oldIrql;
+    KeAcquireSpinLock(&g_PendingLock, &oldIrql);
+    hasCapacity = g_PendingCount < ScamAlertMaxPendingOps;
+    KeReleaseSpinLock(&g_PendingLock, oldIrql);
+    return hasCapacity;
+}
+
 NTSTATUS ScamAlertAddPendingOp(_In_ SCAMALERT_PENDING_NODE* Node)
 {
     if (Node == nullptr || Node->CompletionContext == nullptr || Node->NetBufferList == nullptr)
     {
         return STATUS_INVALID_PARAMETER;
+    }
+
+    if (!g_PendingInitialized)
+    {
+        return STATUS_DEVICE_NOT_READY;
     }
 
     LARGE_INTEGER ticks;
@@ -261,10 +308,60 @@ NTSTATUS ScamAlertAddPendingOp(_In_ SCAMALERT_PENDING_NODE* Node)
 
     KIRQL oldIrql;
     KeAcquireSpinLock(&g_PendingLock, &oldIrql);
+
+    if (g_PendingCount >= ScamAlertMaxPendingOps)
+    {
+        KeReleaseSpinLock(&g_PendingLock, oldIrql);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
     InsertTailList(&g_PendingList, &Node->Link);
+    ++g_PendingCount;
     KeReleaseSpinLock(&g_PendingLock, oldIrql);
 
     return STATUS_SUCCESS;
+}
+
+VOID ScamAlertCancelPendingOp(_In_ SCAMALERT_PENDING_NODE* Node)
+{
+    if (Node == nullptr) return;
+
+    BOOLEAN removed = FALSE;
+    KIRQL oldIrql;
+    KeAcquireSpinLock(&g_PendingLock, &oldIrql);
+
+    PLIST_ENTRY entry = g_PendingList.Flink;
+    while (entry != &g_PendingList)
+    {
+        PLIST_ENTRY next = entry->Flink;
+        SCAMALERT_PENDING_NODE* candidate = CONTAINING_RECORD(entry, SCAMALERT_PENDING_NODE, Link);
+        if (candidate == Node)
+        {
+            RemoveEntryList(&candidate->Link);
+            if (g_PendingCount > 0)
+            {
+                --g_PendingCount;
+            }
+            removed = TRUE;
+            break;
+        }
+        entry = next;
+    }
+
+    KeReleaseSpinLock(&g_PendingLock, oldIrql);
+
+    if (!removed)
+    {
+        return;
+    }
+
+    if (Node->CompletionContext != nullptr)
+    {
+        FwpsCompleteOperation0(Node->CompletionContext, nullptr);
+        Node->CompletionContext = nullptr;
+    }
+
+    ScamAlertReleasePendingNode(Node);
 }
 
 // ALLOW path: clone the saved inbound NBL, hand the clone to
@@ -412,6 +509,10 @@ NTSTATUS ScamAlertCompletePendingOp(
         if (RtlEqualMemory(candidate->EventId, EventId, 16))
         {
             RemoveEntryList(&candidate->Link);
+            if (g_PendingCount > 0)
+            {
+                --g_PendingCount;
+            }
             node = candidate;
             break;
         }

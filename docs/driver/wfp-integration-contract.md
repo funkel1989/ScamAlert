@@ -1,10 +1,15 @@
 # WFP Driver Integration Contract
 
-The broker owns policy. The native driver or its user-mode bridge sends one newline-terminated `ProtectedConnectionAttempt` JSON object over the `scamalert-driver-events` named pipe and waits for one newline-terminated `DriverDecisionResponse` JSON object.
+The broker owns policy. The native WFP driver owns kernel observation and WFP completion. `ScamAlert.DriverBridge` is the user-mode adapter between those two boundaries:
+
+- DriverBridge talks to the native driver through binary IOCTLs on `\\.\ScamAlertWfp`.
+- DriverBridge talks to `ScamAlert.Broker` by sending one newline-terminated `ProtectedConnectionAttempt` JSON object over the `scamalert-driver-events` named pipe and waiting for one newline-terminated `DriverDecisionResponse` JSON object.
 
 Pipe name: `scamalert-driver-events`
 
-## Framing
+Device name: `\\.\ScamAlertWfp`
+
+## Named-Pipe Framing
 
 - Encoding is UTF-8 without BOM.
 - Each pipe connection carries exactly one request and one response.
@@ -49,10 +54,42 @@ Fields:
 
 The driver or bridge must verify that `observedEventId` matches the request `eventId`. A mismatch is a protocol failure and must not be applied as the decision for the pending WFP authorization.
 
+## Binary IOCTL Boundary
+
+The native contract is defined in `native/ScamAlert.Driver.Shared/ScamAlertDriverIoctl.h` and mirrored by `src/ScamAlert.DriverBridge/Driver/NativeDriverContracts.cs`.
+
+Supported IOCTLs:
+
+- `IOCTL_SCAMALERT_GET_EVENT`: DriverBridge blocks until a driver event is available or the call fails.
+- `IOCTL_SCAMALERT_COMPLETE_EVENT`: DriverBridge returns the allow/block decision for a pending event.
+- `IOCTL_SCAMALERT_GET_STATS`: diagnostics-only counter snapshot.
+
+Current native structure sizes:
+
+- `SCAMALERT_CONNECTION_EVENT`: 122 bytes
+- `SCAMALERT_CONNECTION_DECISION`: 20 bytes
+- `SCAMALERT_DRIVER_STATS`: 72 bytes
+
+The driver device is restricted to LocalSystem and administrators. The bridge should run elevated or as a service account that can open the device.
+
+Current stats counters:
+
+- `ClassifyHits`
+- `EventsQueued`
+- `EventsDequeued`
+- `DecisionsAllowed`
+- `DecisionsBlocked`
+- `PendingOps`
+- `TimedOutFailBlock`
+- `EventsDropped`
+- `PendingRejected`
+
 ## Timeout And Fallback
 
 The broker should bound each connected request with a per-connection timeout and close the pipe on timeout, malformed input, partial input, blank input, or processing failure.
 
-The driver or native user-mode bridge must apply the persisted fail behavior if the broker pipe is unavailable, the protocol fails, or the broker does not return a complete response before the driver timeout. The MVP default fail behavior is allow.
+DriverBridge currently applies the MVP fail behavior if the broker pipe is unavailable, the protocol fails, or the broker does not return a complete response before the bridge timeout. The MVP default fail behavior is allow, matching the simulator-era local flow.
 
-The driver must bound pending WFP authorization time and complete the WFP operation with the final allow/block decision. The driver timeout should be shorter than the maximum authorization time the WFP callout can safely hold.
+The driver also bounds pending WFP authorization time. If no completion reaches the kernel before the pending-operation timeout, the driver fails the stale operation closed and increments `TimedOutFailBlock`.
+
+The event queue and pending-operation table are bounded. Under pressure, the driver increments `EventsDropped` or `PendingRejected` instead of allowing unbounded nonpaged-pool growth.

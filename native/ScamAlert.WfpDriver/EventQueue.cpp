@@ -4,11 +4,14 @@
 static LIST_ENTRY g_EventQueue;
 static KSPIN_LOCK g_EventQueueLock;
 static BOOLEAN    g_EventQueueInitialized = FALSE;
+static LONG       g_EventQueueLength      = 0;
+static constexpr LONG ScamAlertMaxQueuedEvents = 256;
 
 NTSTATUS ScamAlertInitializeEventQueue()
 {
     InitializeListHead(&g_EventQueue);
     KeInitializeSpinLock(&g_EventQueueLock);
+    g_EventQueueLength = 0;
     g_EventQueueInitialized = TRUE;
     return STATUS_SUCCESS;
 }
@@ -27,10 +30,15 @@ VOID ScamAlertDestroyEventQueue()
     {
         PLIST_ENTRY entry = RemoveHeadList(&g_EventQueue);
         SCAMALERT_EVENT_NODE* node = CONTAINING_RECORD(entry, SCAMALERT_EVENT_NODE, Link);
+        if (g_EventQueueLength > 0)
+        {
+            --g_EventQueueLength;
+        }
         ExFreePoolWithTag(node, SCAMALERT_POOL_TAG);
     }
 
     KeReleaseSpinLock(&g_EventQueueLock, oldIrql);
+    g_EventQueueLength = 0;
     g_EventQueueInitialized = FALSE;
 }
 
@@ -53,7 +61,16 @@ NTSTATUS ScamAlertQueueConnectionEvent(_In_ const SCAMALERT_CONNECTION_EVENT* Ev
 
     KIRQL oldIrql;
     KeAcquireSpinLock(&g_EventQueueLock, &oldIrql);
+
+    if (g_EventQueueLength >= ScamAlertMaxQueuedEvents)
+    {
+        KeReleaseSpinLock(&g_EventQueueLock, oldIrql);
+        ExFreePoolWithTag(node, SCAMALERT_POOL_TAG);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
     InsertTailList(&g_EventQueue, &node->Link);
+    ++g_EventQueueLength;
     KeReleaseSpinLock(&g_EventQueueLock, oldIrql);
 
     return STATUS_SUCCESS;
@@ -76,6 +93,10 @@ NTSTATUS ScamAlertPopConnectionEvent(_Out_ SCAMALERT_CONNECTION_EVENT* Event)
     }
 
     PLIST_ENTRY entry = RemoveHeadList(&g_EventQueue);
+    if (g_EventQueueLength > 0)
+    {
+        --g_EventQueueLength;
+    }
     KeReleaseSpinLock(&g_EventQueueLock, oldIrql);
 
     SCAMALERT_EVENT_NODE* node = CONTAINING_RECORD(entry, SCAMALERT_EVENT_NODE, Link);

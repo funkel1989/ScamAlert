@@ -8,9 +8,17 @@ and test it inside a Windows 11 VM with test-signing enabled.
 
 - **Visual Studio 2022 or 2026 with the "Desktop development with C++"
   workload.** This box already has VS Community 2026 installed.
-- **Windows 11 SDK 10.0.26100.0** - already installed on this box.
-- **Windows Driver Kit 10.0.26100** matching the SDK version. Not yet
-  installed.
+- **Windows 11 SDK 10.0.28000.x** - already installed on this box.
+  (10.0.26100.x also works.)
+- **Windows Driver Kit** - install via **Visual Studio Installer ->
+  Modify -> Individual components -> "Windows Driver Kit"**. This
+  delivers the `Microsoft.Windows.DriverKit` VSIX (project templates +
+  MSBuild targets). Kernel headers and libraries (`ntddk.h`,
+  `fwpsk.h`, `fwpkclnt.lib`) are pulled from the
+  **`Microsoft.Windows.WDK.x64`** NuGet package referenced from the
+  driver `.vcxproj` at build time, not from a global `Windows Kits\10`
+  install. The legacy `wdksetup.exe` standalone installer also works
+  but is no longer required.
 - **Visual Studio C++ Spectre-mitigated libraries (latest)** -
   add via Visual Studio Installer "Modify" -> "Individual components".
   WDK templates require these to link.
@@ -37,13 +45,25 @@ Run on the host:
 scripts/driver/check-driver-prereqs.ps1
 ```
 
-Expected after WDK install:
+Expected after WDK install (modern path):
 
-- `NtddkHeader` resolves to `...\Include\10.0.26100.0\km\ntddk.h`.
-- `FwpskHeader` resolves to `...\Include\10.0.26100.0\km\fwpsk.h`.
-- `FwpkclntLibrary` resolves to
-  `...\Lib\10.0.26100.0\km\x64\fwpkclnt.lib`.
+- `VsWdkExtensionPresent` is `True`.
+- `VsWdkExtensionVersion` reports a 10.0.x version
+  (e.g. `10.0.26586.0`).
+- `NuGetWdkPackages` may say `<none yet - will populate on first build>`
+  before the first driver build, and resolve to
+  `microsoft.windows.wdk.x64` etc. afterward.
 - `VisualStudio` reports the installed VS edition.
+
+Or after WDK install (legacy path - only if you also ran
+`wdksetup.exe`):
+
+- `LegacyWdkPresent` is `True` and
+- `NtddkHeader`, `FwpskHeader`, `FwpkclntLibrary` resolve to real paths
+  under `...\Include\10.0.x\km` and `...\Lib\10.0.x\km\x64`.
+
+Either path is acceptable. The driver `.vcxproj` will use the NuGet
+package even when the legacy path is also present.
 
 ## Validate The VM
 
@@ -57,13 +77,19 @@ Expected: same as host plus `TestSigningEnabled = True`.
 
 ## Where To Get The WDK
 
-Microsoft's official download landing page:
+The recommended path is via the Visual Studio Installer. Open
+`Visual Studio Installer` -> Modify your VS edition ->
+"Individual components" tab -> check **"Windows Driver Kit"** ->
+Modify. This installs the project templates and MSBuild targets.
+Kernel headers and libraries are pulled per-project at build time
+from the `Microsoft.Windows.WDK.x64` NuGet package, so no separate
+installer is needed.
 
+The legacy standalone installer is still published at
 <https://learn.microsoft.com/windows-hardware/drivers/download-the-wdk>
-
-Pick the WDK that matches the installed SDK (10.0.26100). The
-installer is interactive and requires admin rights. Reboot after the
-install completes if prompted.
+if you prefer global headers/libs under
+`C:\Program Files (x86)\Windows Kits\10\Include\<ver>\km`. Match the
+WDK version to the installed SDK if you take this route.
 
 ## VS Component Add-On
 

@@ -32,12 +32,52 @@ try {
     $vmSysPath    = "$vmStagingDir\ScamAlert.WfpDriver.sys"
 
     Write-Host "Stopping any prior service inside the VM" -ForegroundColor Cyan
-    Invoke-Command -Session $session -ScriptBlock {
-        param($svc)
-        sc.exe stop   $svc 2>$null | Out-Null
-        sc.exe delete $svc 2>$null | Out-Null
-        Start-Sleep -Seconds 1
-    } -ArgumentList $ServiceName
+    $stopReport = Invoke-Command -Session $session -ScriptBlock {
+        param($svc, $sysOnVm)
+
+        # Stop + delete (idempotent).
+        sc.exe stop   $svc 2>&1 | Out-Null
+        sc.exe delete $svc 2>&1 | Out-Null
+
+        # Poll until either:
+        #  (a) sc query reports no such service, AND
+        #  (b) the existing .sys can be opened for write (i.e. no longer
+        #      mapped by the kernel).
+        $deadline = (Get-Date).AddSeconds(20)
+        $unloaded = $false
+        while ((Get-Date) -lt $deadline) {
+            sc.exe query $svc 2>&1 | Out-Null
+            $serviceGone = ($LASTEXITCODE -ne 0)
+
+            $fileWritable = $true
+            if (Test-Path -LiteralPath $sysOnVm) {
+                try {
+                    $fs = [System.IO.File]::Open($sysOnVm, 'Open', 'Write', 'None')
+                    $fs.Close()
+                } catch {
+                    $fileWritable = $false
+                }
+            }
+
+            if ($serviceGone -and $fileWritable) {
+                $unloaded = $true
+                break
+            }
+            Start-Sleep -Milliseconds 250
+        }
+
+        [pscustomobject]@{
+            Unloaded   = $unloaded
+            ServiceGone = ($LASTEXITCODE -ne 0)
+            ExistingSysAccessible = (-not (Test-Path -LiteralPath $sysOnVm)) -or {
+                try { $fs = [System.IO.File]::Open($sysOnVm, 'Open', 'Write', 'None'); $fs.Close(); $true } catch { $false }
+            }.Invoke()
+        }
+    } -ArgumentList $ServiceName, $vmSysPath
+
+    if (-not $stopReport.Unloaded) {
+        throw "Driver did not unload within 20 s. The kernel is still holding $vmSysPath. Reboot the VM with 'Restart-VM $VmName -Force' and re-run."
+    }
 
     Write-Host "Creating staging directory in VM: $vmStagingDir" -ForegroundColor Cyan
     Invoke-Command -Session $session -ScriptBlock {

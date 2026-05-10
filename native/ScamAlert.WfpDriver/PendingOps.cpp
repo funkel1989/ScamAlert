@@ -150,7 +150,17 @@ VOID ScamAlertDestroyPendingOps()
 {
     if (!g_PendingInitialized) return;
 
+    // Mark uninitialized FIRST so any DPC that fires between here and
+    // KeFlushQueuedDpcs sees the flag and exits without queueing a new
+    // work item (which could outlive the IoFreeWorkItem below).
+    g_PendingInitialized = FALSE;
+
     KeCancelTimer(&g_TimeoutTimer);
+
+    // Wait for any in-flight DPCs (including ones scheduled by the
+    // timer just before cancel) to complete before freeing the work
+    // item they might queue.
+    KeFlushQueuedDpcs();
 
     if (g_TimeoutWorkItem != nullptr)
     {
@@ -178,8 +188,6 @@ VOID ScamAlertDestroyPendingOps()
         ScamAlertCompleteHandleAtPassive(node->ClassifyHandle, ScamAlertDecisionAllow);
         ExFreePoolWithTag(node, SCAMALERT_POOL_TAG);
     }
-
-    g_PendingInitialized = FALSE;
 }
 
 NTSTATUS ScamAlertAddPendingOp(

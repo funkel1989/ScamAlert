@@ -11,7 +11,8 @@ public sealed class RemoteAccessBroker(
     IRememberedRuleStore rememberedRules,
     ISignalSink signalSink,
     IConnectionDecisionPrompt prompt,
-    RemoteAccessPolicyEngine policyEngine)
+    RemoteAccessPolicyEngine policyEngine,
+    IRecentDecisionCache recentDecisions)
 {
     public async Task<DriverDecisionResponse> HandleAttemptAsync(
         ProtectedConnectionAttempt attempt,
@@ -32,10 +33,20 @@ public sealed class RemoteAccessBroker(
                 DecisionStatus: DecisionStatus.Pending),
             cancellationToken);
 
+        // Burst dedupe: TCP retransmits within seconds reuse the prior
+        // verdict so the user only clicks once per real connection attempt.
+        // Tied to (sourceIp, destinationPort); fresh attempts after the TTL
+        // expires will re-prompt as expected.
+        if (recentDecisions.TryGet(attempt.SourceIp, attempt.DestinationPort, out var cached))
+        {
+            return new DriverDecisionResponse(attempt.EventId, cached.Decision, cached.Reason);
+        }
+
         var rememberedRule = await rememberedRules.FindBySourceIpAsync(attempt.SourceIp, cancellationToken);
         var rememberedDecision = EvaluateRememberedRule(attempt, rememberedRule);
         if (rememberedDecision is not null)
         {
+            CacheDecision(attempt, rememberedDecision);
             return rememberedDecision;
         }
 
@@ -51,7 +62,9 @@ public sealed class RemoteAccessBroker(
         var response = await prompt.RequestDecisionAsync(request, cancellationToken);
         if (response is null || response.ObservedEventId != attempt.EventId)
         {
-            return policyEngine.ApplyTimeout(attempt, settings.TimeoutPolicy);
+            var timeoutDecision = policyEngine.ApplyTimeout(attempt, settings.TimeoutPolicy);
+            CacheDecision(attempt, timeoutDecision);
+            return timeoutDecision;
         }
 
         var userDecision = policyEngine.ApplyUserDecision(attempt, response.Decision);
@@ -74,7 +87,16 @@ public sealed class RemoteAccessBroker(
                 Reason: "userSelected"),
             cancellationToken);
 
+        CacheDecision(attempt, userDecision);
         return userDecision;
+    }
+
+    private void CacheDecision(ProtectedConnectionAttempt attempt, DriverDecisionResponse decision)
+    {
+        recentDecisions.Set(
+            attempt.SourceIp,
+            attempt.DestinationPort,
+            new CachedDecision(decision.Decision, decision.Reason));
     }
 
     private async Task TryAppendSignalAsync<TSignal>(

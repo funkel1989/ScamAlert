@@ -1,6 +1,7 @@
 using System.IO.Pipes;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
 using ScamAlert.Broker.TrayPrompt;
 using ScamAlert.Contracts;
 
@@ -18,7 +19,7 @@ public sealed class NamedPipeTrayPromptClientTests
               {"observedEventId":"{{observedEventId}}","decision":999,"remember":false}
               """);
 
-        var client = new NamedPipeTrayPromptClient();
+        var client = new NamedPipeTrayPromptClient(NullLogger<NamedPipeTrayPromptClient>.Instance);
 
         var response = await client.RequestDecisionAsync(
             new DecisionPromptRequest(

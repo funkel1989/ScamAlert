@@ -29,6 +29,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ScamAlert.Api.Tests", "test
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ScamAlert.Broker.Client", "src\ScamAlert.Broker.Client\ScamAlert.Broker.Client.csproj", "{74523527-C0A9-4E0B-AA69-8584052C7A6F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ScamAlert.DriverBridge", "src\ScamAlert.DriverBridge\ScamAlert.DriverBridge.csproj", "{568201B0-DDE5-426B-8269-2C1713314EFA}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -159,6 +161,18 @@ Global
 		{74523527-C0A9-4E0B-AA69-8584052C7A6F}.Release|x64.Build.0 = Release|Any CPU
 		{74523527-C0A9-4E0B-AA69-8584052C7A6F}.Release|x86.ActiveCfg = Release|Any CPU
 		{74523527-C0A9-4E0B-AA69-8584052C7A6F}.Release|x86.Build.0 = Release|Any CPU
+		{568201B0-DDE5-426B-8269-2C1713314EFA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{568201B0-DDE5-426B-8269-2C1713314EFA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{568201B0-DDE5-426B-8269-2C1713314EFA}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{568201B0-DDE5-426B-8269-2C1713314EFA}.Debug|x64.Build.0 = Debug|Any CPU
+		{568201B0-DDE5-426B-8269-2C1713314EFA}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{568201B0-DDE5-426B-8269-2C1713314EFA}.Debug|x86.Build.0 = Debug|Any CPU
+		{568201B0-DDE5-426B-8269-2C1713314EFA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{568201B0-DDE5-426B-8269-2C1713314EFA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{568201B0-DDE5-426B-8269-2C1713314EFA}.Release|x64.ActiveCfg = Release|Any CPU
+		{568201B0-DDE5-426B-8269-2C1713314EFA}.Release|x64.Build.0 = Release|Any CPU
+		{568201B0-DDE5-426B-8269-2C1713314EFA}.Release|x86.ActiveCfg = Release|Any CPU
+		{568201B0-DDE5-426B-8269-2C1713314EFA}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -174,5 +188,6 @@ Global
 		{3CD92F53-8EA9-490D-83EE-37A68D69D469} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{34B9483C-D509-4022-B43D-0768FB1C2E17} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{74523527-C0A9-4E0B-AA69-8584052C7A6F} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{568201B0-DDE5-426B-8269-2C1713314EFA} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

@@ -108,6 +108,11 @@ NTSTATUS ScamAlertCreateDevice(_In_ PDRIVER_OBJECT DriverObject)
     return STATUS_SUCCESS;
 }
 
+PDEVICE_OBJECT ScamAlertGetDeviceObject()
+{
+    return g_DeviceObject;
+}
+
 VOID ScamAlertDeleteDevice()
 {
     IoDeleteSymbolicLink(&g_SymbolicLink);

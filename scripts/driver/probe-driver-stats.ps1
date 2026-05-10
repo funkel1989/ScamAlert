@@ -23,7 +23,10 @@ using Microsoft.Win32.SafeHandles;
 
 public static class ScamAlertStatsProbe
 {
-    public const uint IoctlGetStats = 0x80006008;
+    // CTL_CODE(0x8000, 0x803, METHOD_BUFFERED, FILE_READ_DATA)
+    //   = (0x8000 << 16) | (FILE_READ_DATA << 14) | (0x803 << 2) | METHOD_BUFFERED
+    //   = 0x80000000 | 0x00004000 | 0x0000200C | 0 = 0x8000600C
+    public const uint IoctlGetStats = 0x8000600C;
 
     public const uint GenericRead       = 0x80000000;
     public const uint GenericWrite      = 0x40000000;

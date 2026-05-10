@@ -1,6 +1,7 @@
 #include "Device.h"
 #include "EventQueue.h"
 #include "PendingOps.h"
+#include "WfpMonitor.h"
 
 static PDEVICE_OBJECT g_DeviceObject = nullptr;
 static UNICODE_STRING g_DeviceName    = RTL_CONSTANT_STRING(L"\\Device\\ScamAlertWfp");
@@ -58,6 +59,30 @@ static NTSTATUS ScamAlertDeviceControl(
         else
         {
             status = ScamAlertCompleteConnectionEvent(static_cast<SCAMALERT_CONNECTION_DECISION*>(buffer));
+        }
+    }
+    else if (code == IOCTL_SCAMALERT_GET_STATS)
+    {
+        if (outputLength < sizeof(SCAMALERT_DRIVER_STATS))
+        {
+            status = STATUS_BUFFER_TOO_SMALL;
+        }
+        else
+        {
+            LONG64 counters[7] = {};
+            ScamAlertGetMonitorCounters(counters);
+
+            SCAMALERT_DRIVER_STATS* stats = static_cast<SCAMALERT_DRIVER_STATS*>(buffer);
+            stats->ClassifyEntered     = static_cast<UINT64>(counters[0]);
+            stats->EventsQueued        = static_cast<UINT64>(counters[1]);
+            stats->AcquireOk           = static_cast<UINT64>(counters[2]);
+            stats->AcquireFailed       = static_cast<UINT64>(counters[3]);
+            stats->PendOk              = static_cast<UINT64>(counters[4]);
+            stats->PendFailed          = static_cast<UINT64>(counters[5]);
+            stats->ClassifyContextNull = static_cast<UINT64>(counters[6]);
+
+            status = STATUS_SUCCESS;
+            information = sizeof(SCAMALERT_DRIVER_STATS);
         }
     }
 

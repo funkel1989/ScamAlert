@@ -116,24 +116,58 @@ static BOOLEAN ScamAlertIsReauthorize(const FWPS_INCOMING_METADATA_VALUES0* inMe
 
 // ---------- classify functions ----------
 
-// Tries to pend the classify so the broker can decide. On success, the
-// kernel holds the connection in pending state until
-// FwpsCompleteClassify0 is called from ScamAlertCompletePendingOp.
-//
-// Uses the WDK 26100+ async classify pattern:
-//   FwpsAcquireClassifyHandle0 -> FwpsPendClassify0 -> ... ->
-//   FwpsCompleteClassify0 -> FwpsReleaseClassifyHandle0.
-//
-// On any failure (allocation, acquire, pend) we leave classifyOut on
-// FWP_ACTION_PERMIT and drop the pending entry, so the user is never
-// worse off than observe-only.
+// Counters bumped from classify so we can introspect Milestone B
+// behavior without pulling up DebugView. ScamAlertGetMonitorCounters
+// exposes them via an IOCTL diagnostic call.
+static volatile LONG64 g_StatsClassifyEntered      = 0;
+static volatile LONG64 g_StatsEventsQueued         = 0;
+static volatile LONG64 g_StatsAcquireOk            = 0;
+static volatile LONG64 g_StatsAcquireFailed        = 0;
+static volatile LONG64 g_StatsPendOk               = 0;
+static volatile LONG64 g_StatsPendFailed           = 0;
+static volatile LONG64 g_StatsClassifyContextNull  = 0;
+
+VOID ScamAlertGetMonitorCounters(_Out_ LONG64* out)
+{
+    out[0] = g_StatsClassifyEntered;
+    out[1] = g_StatsEventsQueued;
+    out[2] = g_StatsAcquireOk;
+    out[3] = g_StatsAcquireFailed;
+    out[4] = g_StatsPendOk;
+    out[5] = g_StatsPendFailed;
+    out[6] = g_StatsClassifyContextNull;
+}
+
+// Always queues the event for observability; on top of that, tries to
+// pend so the broker can decide. If the pend chain fails for any
+// reason, we leave classifyOut on FWP_ACTION_PERMIT, which means the
+// kernel allows the connection (worst-case behavior is identical to
+// Milestone A observe-only).
 static VOID ScamAlertPendForBrokerDecision(
     _In_ const SCAMALERT_CONNECTION_EVENT* event,
-    _In_ const void*                       classifyContext,
+    _In_opt_ const void*                   classifyContext,
     _In_ const FWPS_FILTER1*               filter,
     _In_ UINT16                            layerId,
     _Inout_ FWPS_CLASSIFY_OUT0*            classifyOut)
 {
+    UNREFERENCED_PARAMETER(layerId);
+
+    // 1. Observability comes first. If anything below fails, the user
+    //    still sees the attempt in the broker's signal log.
+    if (NT_SUCCESS(ScamAlertQueueConnectionEvent(event)))
+    {
+        InterlockedIncrement64(&g_StatsEventsQueued);
+    }
+
+    // 2. classifyContext is non-NULL only when WFP is willing to let
+    //    us pend / modify this classify. If null we cannot pend and
+    //    must fail-open immediately.
+    if (classifyContext == nullptr)
+    {
+        InterlockedIncrement64(&g_StatsClassifyContextNull);
+        return;
+    }
+
     UINT64 classifyHandle = 0;
     NTSTATUS status = FwpsAcquireClassifyHandle0(
         const_cast<void*>(classifyContext),
@@ -141,11 +175,12 @@ static VOID ScamAlertPendForBrokerDecision(
         &classifyHandle);
     if (!NT_SUCCESS(status) || classifyHandle == 0)
     {
-        return; // fail-open: classifyOut stays PERMIT
+        InterlockedIncrement64(&g_StatsAcquireFailed);
+        return;
     }
+    InterlockedIncrement64(&g_StatsAcquireOk);
 
-    status = ScamAlertAddPendingOp(event->EventId, classifyHandle, layerId);
-    if (!NT_SUCCESS(status))
+    if (!NT_SUCCESS(ScamAlertAddPendingOp(event->EventId, classifyHandle, layerId)))
     {
         FwpsReleaseClassifyHandle0(classifyHandle);
         return;
@@ -154,31 +189,17 @@ static VOID ScamAlertPendForBrokerDecision(
     status = FwpsPendClassify0(classifyHandle, filter->filterId, 0, classifyOut);
     if (!NT_SUCCESS(status))
     {
-        // Roll back: the pending entry release will run
-        // FwpsCompleteClassify0 + Release; that's correct cleanup even
-        // though the API call we just made failed - the handle is
-        // still acquired, we still owe a Release.
-        ScamAlertCompletePendingOp(event->EventId, ScamAlertDecisionAllow);
-        // If completion didn't run (e.g., our entry already removed),
-        // the leak is bounded; classifyOut was not modified by a
-        // failed FwpsPendClassify0, so fail-open behavior holds.
-        return;
-    }
-
-    // Make the event visible to user mode AFTER pending state is
-    // established so the bridge can never call complete on a
-    // not-yet-pended handle.
-    if (!NT_SUCCESS(ScamAlertQueueConnectionEvent(event)))
-    {
-        // Best-effort cleanup. The classify is already pending; we
-        // complete it ourselves with allow so we don't strand it.
+        InterlockedIncrement64(&g_StatsPendFailed);
+        // Best-effort rollback. Our entry release path will call
+        // FwpsCompleteClassify0 + Release as cleanup.
         ScamAlertCompletePendingOp(event->EventId, ScamAlertDecisionAllow);
         return;
     }
 
-    // FwpsPendClassify0 already set classifyOut->actionType to BLOCK,
-    // cleared FWPS_RIGHT_ACTION_WRITE, and set ABSORB; nothing more
-    // for us to do here.
+    InterlockedIncrement64(&g_StatsPendOk);
+    // FwpsPendClassify0 already set classifyOut to "pending block /
+    // ABSORB"; the bridge will subsequently complete the pending op
+    // via IOCTL_SCAMALERT_COMPLETE_EVENT.
 }
 
 static VOID NTAPI ScamAlertClassifyRecvAcceptV4(
@@ -191,8 +212,9 @@ static VOID NTAPI ScamAlertClassifyRecvAcceptV4(
     _Inout_ FWPS_CLASSIFY_OUT0*                  classifyOut)
 {
     UNREFERENCED_PARAMETER(layerData);
-    UNREFERENCED_PARAMETER(filter);
     UNREFERENCED_PARAMETER(flowContext);
+
+    InterlockedIncrement64(&g_StatsClassifyEntered);
 
     if ((classifyOut->rights & FWPS_RIGHT_ACTION_WRITE) == 0)
     {
@@ -244,8 +266,9 @@ static VOID NTAPI ScamAlertClassifyRecvAcceptV6(
     _Inout_ FWPS_CLASSIFY_OUT0*                  classifyOut)
 {
     UNREFERENCED_PARAMETER(layerData);
-    UNREFERENCED_PARAMETER(filter);
     UNREFERENCED_PARAMETER(flowContext);
+
+    InterlockedIncrement64(&g_StatsClassifyEntered);
 
     if ((classifyOut->rights & FWPS_RIGHT_ACTION_WRITE) == 0)
     {

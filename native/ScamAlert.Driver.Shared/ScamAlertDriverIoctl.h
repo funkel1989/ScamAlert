@@ -30,6 +30,9 @@ typedef UINT64 uint64_t;
 #define IOCTL_SCAMALERT_COMPLETE_EVENT \
     CTL_CODE(SCAMALERT_DEVICE_TYPE, 0x802, METHOD_BUFFERED, FILE_WRITE_DATA)
 
+#define IOCTL_SCAMALERT_GET_STATS \
+    CTL_CODE(SCAMALERT_DEVICE_TYPE, 0x803, METHOD_BUFFERED, FILE_READ_DATA)
+
 // Max IPv6 textual length (45 chars: "ffff:ffff:ffff:ffff:ffff:ffff:255.255.255.255")
 // plus the null terminator. WCHAR (UTF-16) on Windows.
 #define SCAMALERT_MAX_IP_CHARS 46
@@ -63,6 +66,19 @@ typedef struct SCAMALERT_CONNECTION_DECISION
     uint8_t  EventId[16];
     uint32_t Decision;                         // SCAMALERT_DRIVER_DECISION
 } SCAMALERT_CONNECTION_DECISION;
+
+// Diagnostic counters returned by IOCTL_SCAMALERT_GET_STATS. Lets us
+// introspect the Milestone B classify/pend path without DebugView.
+typedef struct SCAMALERT_DRIVER_STATS
+{
+    uint64_t ClassifyEntered;
+    uint64_t EventsQueued;
+    uint64_t AcquireOk;
+    uint64_t AcquireFailed;
+    uint64_t PendOk;
+    uint64_t PendFailed;
+    uint64_t ClassifyContextNull;
+} SCAMALERT_DRIVER_STATS;
 
 #pragma pack(pop)
 

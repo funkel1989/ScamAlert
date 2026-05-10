@@ -76,12 +76,14 @@
     <ClCompile Include="Driver.cpp" />
     <ClCompile Include="Device.cpp" />
     <ClCompile Include="EventQueue.cpp" />
+    <ClCompile Include="PendingOps.cpp" />
     <ClCompile Include="WfpMonitor.cpp" />
   </ItemGroup>
 
   <ItemGroup>
     <ClInclude Include="Device.h" />
     <ClInclude Include="EventQueue.h" />
+    <ClInclude Include="PendingOps.h" />
     <ClInclude Include="WfpMonitor.h" />
     <ClInclude Include="Trace.h" />
     <ClInclude Include="..\ScamAlert.Driver.Shared\ScamAlertDriverIoctl.h" />

@@ -1,5 +1,6 @@
 #include "Device.h"
 #include "EventQueue.h"
+#include "PendingOps.h"
 
 static PDEVICE_OBJECT g_DeviceObject = nullptr;
 static UNICODE_STRING g_DeviceName    = RTL_CONSTANT_STRING(L"\\Device\\ScamAlertWfp");
@@ -105,6 +106,19 @@ NTSTATUS ScamAlertCreateDevice(_In_ PDRIVER_OBJECT DriverObject)
         return status;
     }
 
+    // Pending-ops needs a valid g_DeviceObject for IoAllocateWorkItem,
+    // so initialize after IoCreateDevice has succeeded.
+    status = ScamAlertInitializePendingOps();
+    if (!NT_SUCCESS(status))
+    {
+        IoDeleteSymbolicLink(&g_SymbolicLink);
+        IoDeleteDevice(g_DeviceObject);
+        g_DeviceObject = nullptr;
+        ScamAlertDestroyEventQueue();
+        g_QueueInitialized = FALSE;
+        return status;
+    }
+
     return STATUS_SUCCESS;
 }
 
@@ -115,6 +129,10 @@ PDEVICE_OBJECT ScamAlertGetDeviceObject()
 
 VOID ScamAlertDeleteDevice()
 {
+    // Drain pending classifies first so no callouts hold open handles
+    // when we tear the device down. PendingOps fail-opens any survivors.
+    ScamAlertDestroyPendingOps();
+
     IoDeleteSymbolicLink(&g_SymbolicLink);
 
     if (g_DeviceObject != nullptr)

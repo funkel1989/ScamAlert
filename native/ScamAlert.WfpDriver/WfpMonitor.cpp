@@ -10,6 +10,7 @@
 #include <ntstrsafe.h>
 
 #include "EventQueue.h"
+#include "PendingOps.h"
 #include "..\ScamAlert.Driver.Shared\ScamAlertDriverIoctl.h"
 
 // Stable GUIDs published in the WFP integration contract / plan.
@@ -115,6 +116,71 @@ static BOOLEAN ScamAlertIsReauthorize(const FWPS_INCOMING_METADATA_VALUES0* inMe
 
 // ---------- classify functions ----------
 
+// Tries to pend the classify so the broker can decide. On success, the
+// kernel holds the connection in pending state until
+// FwpsCompleteClassify0 is called from ScamAlertCompletePendingOp.
+//
+// Uses the WDK 26100+ async classify pattern:
+//   FwpsAcquireClassifyHandle0 -> FwpsPendClassify0 -> ... ->
+//   FwpsCompleteClassify0 -> FwpsReleaseClassifyHandle0.
+//
+// On any failure (allocation, acquire, pend) we leave classifyOut on
+// FWP_ACTION_PERMIT and drop the pending entry, so the user is never
+// worse off than observe-only.
+static VOID ScamAlertPendForBrokerDecision(
+    _In_ const SCAMALERT_CONNECTION_EVENT* event,
+    _In_ const void*                       classifyContext,
+    _In_ const FWPS_FILTER1*               filter,
+    _In_ UINT16                            layerId,
+    _Inout_ FWPS_CLASSIFY_OUT0*            classifyOut)
+{
+    UINT64 classifyHandle = 0;
+    NTSTATUS status = FwpsAcquireClassifyHandle0(
+        const_cast<void*>(classifyContext),
+        0,
+        &classifyHandle);
+    if (!NT_SUCCESS(status) || classifyHandle == 0)
+    {
+        return; // fail-open: classifyOut stays PERMIT
+    }
+
+    status = ScamAlertAddPendingOp(event->EventId, classifyHandle, layerId);
+    if (!NT_SUCCESS(status))
+    {
+        FwpsReleaseClassifyHandle0(classifyHandle);
+        return;
+    }
+
+    status = FwpsPendClassify0(classifyHandle, filter->filterId, 0, classifyOut);
+    if (!NT_SUCCESS(status))
+    {
+        // Roll back: the pending entry release will run
+        // FwpsCompleteClassify0 + Release; that's correct cleanup even
+        // though the API call we just made failed - the handle is
+        // still acquired, we still owe a Release.
+        ScamAlertCompletePendingOp(event->EventId, ScamAlertDecisionAllow);
+        // If completion didn't run (e.g., our entry already removed),
+        // the leak is bounded; classifyOut was not modified by a
+        // failed FwpsPendClassify0, so fail-open behavior holds.
+        return;
+    }
+
+    // Make the event visible to user mode AFTER pending state is
+    // established so the bridge can never call complete on a
+    // not-yet-pended handle.
+    if (!NT_SUCCESS(ScamAlertQueueConnectionEvent(event)))
+    {
+        // Best-effort cleanup. The classify is already pending; we
+        // complete it ourselves with allow so we don't strand it.
+        ScamAlertCompletePendingOp(event->EventId, ScamAlertDecisionAllow);
+        return;
+    }
+
+    // FwpsPendClassify0 already set classifyOut->actionType to BLOCK,
+    // cleared FWPS_RIGHT_ACTION_WRITE, and set ABSORB; nothing more
+    // for us to do here.
+}
+
 static VOID NTAPI ScamAlertClassifyRecvAcceptV4(
     _In_ const FWPS_INCOMING_VALUES0*           inFixedValues,
     _In_ const FWPS_INCOMING_METADATA_VALUES0*  inMetaValues,
@@ -125,7 +191,6 @@ static VOID NTAPI ScamAlertClassifyRecvAcceptV4(
     _Inout_ FWPS_CLASSIFY_OUT0*                  classifyOut)
 {
     UNREFERENCED_PARAMETER(layerData);
-    UNREFERENCED_PARAMETER(classifyContext);
     UNREFERENCED_PARAMETER(filter);
     UNREFERENCED_PARAMETER(flowContext);
 
@@ -161,10 +226,12 @@ static VOID NTAPI ScamAlertClassifyRecvAcceptV4(
         ->incomingValue[FWPS_FIELD_ALE_AUTH_RECV_ACCEPT_V4_IP_REMOTE_ADDRESS]
         .value.uint32;
 
-    if (NT_SUCCESS(ScamAlertWriteIpv4Source(sourceAddress, reinterpret_cast<wchar_t*>(event.SourceIp))))
+    if (!NT_SUCCESS(ScamAlertWriteIpv4Source(sourceAddress, reinterpret_cast<wchar_t*>(event.SourceIp))))
     {
-        ScamAlertQueueConnectionEvent(&event);
+        return;
     }
+
+    ScamAlertPendForBrokerDecision(&event, classifyContext, filter, FWPS_LAYER_ALE_AUTH_RECV_ACCEPT_V4, classifyOut);
 }
 
 static VOID NTAPI ScamAlertClassifyRecvAcceptV6(
@@ -177,7 +244,6 @@ static VOID NTAPI ScamAlertClassifyRecvAcceptV6(
     _Inout_ FWPS_CLASSIFY_OUT0*                  classifyOut)
 {
     UNREFERENCED_PARAMETER(layerData);
-    UNREFERENCED_PARAMETER(classifyContext);
     UNREFERENCED_PARAMETER(filter);
     UNREFERENCED_PARAMETER(flowContext);
 
@@ -215,10 +281,12 @@ static VOID NTAPI ScamAlertClassifyRecvAcceptV6(
         inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_RECV_ACCEPT_V6_IP_REMOTE_ADDRESS].value.byteArray16->byteArray16,
         sizeof(sourceAddress.byteArray16));
 
-    if (NT_SUCCESS(ScamAlertWriteIpv6Source(&sourceAddress, reinterpret_cast<wchar_t*>(event.SourceIp))))
+    if (!NT_SUCCESS(ScamAlertWriteIpv6Source(&sourceAddress, reinterpret_cast<wchar_t*>(event.SourceIp))))
     {
-        ScamAlertQueueConnectionEvent(&event);
+        return;
     }
+
+    ScamAlertPendForBrokerDecision(&event, classifyContext, filter, FWPS_LAYER_ALE_AUTH_RECV_ACCEPT_V6, classifyOut);
 }
 
 static NTSTATUS NTAPI ScamAlertNotify(

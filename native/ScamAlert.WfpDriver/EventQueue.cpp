@@ -1,4 +1,5 @@
 #include "EventQueue.h"
+#include "PendingOps.h"
 
 static LIST_ENTRY g_EventQueue;
 static KSPIN_LOCK g_EventQueueLock;
@@ -86,10 +87,15 @@ NTSTATUS ScamAlertPopConnectionEvent(_Out_ SCAMALERT_CONNECTION_EVENT* Event)
 
 NTSTATUS ScamAlertCompleteConnectionEvent(_In_ const SCAMALERT_CONNECTION_DECISION* Decision)
 {
-    // Observe-only mode: decision is acknowledged but not enforced.
-    // Milestone B will look up a pending IRP keyed by Decision->EventId
-    // and complete it with FwpsCompleteOperation0 + the allow/block
-    // verdict.
-    UNREFERENCED_PARAMETER(Decision);
-    return STATUS_SUCCESS;
+    if (Decision == nullptr) return STATUS_INVALID_PARAMETER;
+
+    const SCAMALERT_DRIVER_DECISION verdict =
+        static_cast<SCAMALERT_DRIVER_DECISION>(Decision->Decision);
+
+    if (verdict != ScamAlertDecisionAllow && verdict != ScamAlertDecisionBlock)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    return ScamAlertCompletePendingOp(Decision->EventId, verdict);
 }

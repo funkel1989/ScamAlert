@@ -16,10 +16,13 @@
 // we clone+reinject is the IOCTL path, where the broker is alive and the
 // connection is still fresh.
 //
-// Choosing 10s (less than TCP's ~21s SYN retry budget) means our timeout
-// fires before TCP gives up, so the connection is decisively blocked
-// rather than hanging in a half-state.
-constexpr LONGLONG ScamAlertPendingTimeoutTicks    = 10LL * 10000000LL;
+// 60s gives a human plenty of time to read and click Allow/Block in the
+// tray prompt (broker's PromptTimeoutSeconds default is 30s, so user mode
+// always responds first under normal conditions). Inbound TCP still gives
+// up on its own around 21s, so a slow user past that point will see their
+// connection retry-fail; the broker's verdict, when it eventually arrives,
+// runs against an empty pending table and is silently ignored.
+constexpr LONGLONG ScamAlertPendingTimeoutTicks    = 60LL * 10000000LL;
 constexpr LONGLONG ScamAlertPendingScanPeriodTicks =  1LL * 10000000LL;
 
 static LIST_ENTRY     g_PendingList;

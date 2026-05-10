@@ -1,12 +1,14 @@
 using System.IO.Pipes;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using ScamAlert.Contracts;
 using ScamAlert.Core.Broker;
 
 namespace ScamAlert.Broker.TrayPrompt;
 
-public sealed class NamedPipeTrayPromptClient : IConnectionDecisionPrompt
+public sealed class NamedPipeTrayPromptClient(ILogger<NamedPipeTrayPromptClient> logger)
+    : IConnectionDecisionPrompt
 {
     public const string PipeName = "scamalert-tray-prompts";
 
@@ -22,11 +24,20 @@ public sealed class NamedPipeTrayPromptClient : IConnectionDecisionPrompt
     {
         if (request.TimeoutSeconds <= 0)
         {
+            logger.LogWarning("Tray prompt skipped: request.TimeoutSeconds={TimeoutSeconds}.", request.TimeoutSeconds);
             return null;
         }
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(request.TimeoutSeconds));
+
+        var connectTimeout = TimeSpan.FromMilliseconds(
+            Math.Min(MaxConnectTimeout.TotalMilliseconds, TimeSpan.FromSeconds(request.TimeoutSeconds).TotalMilliseconds));
+
+        logger.LogInformation(
+            "Tray prompt START. EventId={EventId} Service={Service} Port={Port} TimeoutSeconds={TimeoutSeconds} ConnectTimeoutMs={ConnectTimeoutMs}",
+            request.ObservedEventId, request.ProtectedService, request.DestinationPort,
+            request.TimeoutSeconds, (int)connectTimeout.TotalMilliseconds);
 
         try
         {
@@ -36,10 +47,8 @@ public sealed class NamedPipeTrayPromptClient : IConnectionDecisionPrompt
                 PipeDirection.InOut,
                 PipeOptions.Asynchronous);
 
-            var connectTimeout = TimeSpan.FromMilliseconds(
-                Math.Min(MaxConnectTimeout.TotalMilliseconds, TimeSpan.FromSeconds(request.TimeoutSeconds).TotalMilliseconds));
-
             await pipe.ConnectAsync((int)connectTimeout.TotalMilliseconds, timeout.Token);
+            logger.LogInformation("Tray prompt CONNECTED. EventId={EventId}", request.ObservedEventId);
 
             await using var writer = new StreamWriter(
                 pipe,
@@ -51,52 +60,90 @@ public sealed class NamedPipeTrayPromptClient : IConnectionDecisionPrompt
 
             var requestLine = JsonSerializer.Serialize(request, SignalJson.Options);
             await writer.WriteLineAsync(requestLine.AsMemory(), timeout.Token);
+            logger.LogInformation(
+                "Tray prompt SENT. EventId={EventId} RequestBytes={RequestBytes}",
+                request.ObservedEventId, requestLine.Length);
 
             var responseLine = await ReadFrameAsync(pipe, timeout.Token);
             if (string.IsNullOrWhiteSpace(responseLine))
             {
+                logger.LogWarning(
+                    "Tray prompt EMPTY response. EventId={EventId}", request.ObservedEventId);
                 return null;
             }
+
+            logger.LogInformation(
+                "Tray prompt RECEIVED. EventId={EventId} ResponseBytes={ResponseBytes}",
+                request.ObservedEventId, responseLine.Length);
 
             var response = JsonSerializer.Deserialize<DecisionPromptResponse>(
                 responseLine,
                 SignalJson.Options);
 
-            if (response is null
-                || response.ObservedEventId != request.ObservedEventId
-                || !IsKnownUserDecision(response.Decision))
+            if (response is null)
             {
+                logger.LogWarning("Tray prompt response failed to deserialize. EventId={EventId}", request.ObservedEventId);
                 return null;
             }
 
+            if (response.ObservedEventId != request.ObservedEventId)
+            {
+                logger.LogWarning(
+                    "Tray prompt response EventId mismatch. Sent={SentId} Got={GotId}",
+                    request.ObservedEventId, response.ObservedEventId);
+                return null;
+            }
+
+            if (!IsKnownUserDecision(response.Decision))
+            {
+                logger.LogWarning(
+                    "Tray prompt response decision not recognized. EventId={EventId} Decision={Decision}",
+                    request.ObservedEventId, response.Decision);
+                return null;
+            }
+
+            logger.LogInformation(
+                "Tray prompt DONE. EventId={EventId} Decision={Decision} Remember={Remember}",
+                request.ObservedEventId, response.Decision, response.Remember);
             return response;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
         {
+            logger.LogWarning(
+                "Tray prompt CANCELED. EventId={EventId} CallerCanceled={CallerCanceled} TimeoutFired={TimeoutFired} Reason={Reason}",
+                request.ObservedEventId, cancellationToken.IsCancellationRequested, timeout.IsCancellationRequested, ex.Message);
             return null;
         }
-        catch (TimeoutException)
+        catch (TimeoutException ex)
         {
+            logger.LogWarning(
+                "Tray prompt TIMEOUT (connect). EventId={EventId} Reason={Reason}",
+                request.ObservedEventId, ex.Message);
             return null;
         }
-        catch (IOException)
+        catch (IOException ex)
         {
+            logger.LogWarning(ex, "Tray prompt IOException. EventId={EventId}", request.ObservedEventId);
             return null;
         }
-        catch (UnauthorizedAccessException)
+        catch (UnauthorizedAccessException ex)
         {
+            logger.LogWarning(ex, "Tray prompt UnauthorizedAccessException. EventId={EventId}", request.ObservedEventId);
             return null;
         }
-        catch (JsonException)
+        catch (JsonException ex)
         {
+            logger.LogWarning(ex, "Tray prompt JsonException. EventId={EventId}", request.ObservedEventId);
             return null;
         }
-        catch (DecoderFallbackException)
+        catch (DecoderFallbackException ex)
         {
+            logger.LogWarning(ex, "Tray prompt DecoderFallbackException. EventId={EventId}", request.ObservedEventId);
             return null;
         }
-        catch (TrayPromptProtocolException)
+        catch (TrayPromptProtocolException ex)
         {
+            logger.LogWarning(ex, "Tray prompt protocol error. EventId={EventId}", request.ObservedEventId);
             return null;
         }
     }

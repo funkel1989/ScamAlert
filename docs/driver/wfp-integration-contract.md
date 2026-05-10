@@ -60,7 +60,7 @@ The native contract is defined in `native/ScamAlert.Driver.Shared/ScamAlertDrive
 
 Supported IOCTLs:
 
-- `IOCTL_SCAMALERT_GET_EVENT`: DriverBridge blocks until a driver event is available or the call fails.
+- `IOCTL_SCAMALERT_GET_EVENT`: DriverBridge requests the next queued driver event. The call is currently non-blocking: it returns an event immediately when one is available, or `STATUS_NO_MORE_ENTRIES` when the queue is empty. The bridge handles an empty queue by polling again after a short delay.
 - `IOCTL_SCAMALERT_COMPLETE_EVENT`: DriverBridge returns the allow/block decision for a pending event.
 - `IOCTL_SCAMALERT_GET_STATS`: diagnostics-only counter snapshot.
 
@@ -74,12 +74,12 @@ The driver device is restricted to LocalSystem and administrators. The bridge sh
 
 Current stats counters:
 
-- `ClassifyHits`
+- `ClassifyEntered`
+- `SelfInjectedSkipped`
 - `EventsQueued`
-- `EventsDequeued`
-- `DecisionsAllowed`
-- `DecisionsBlocked`
-- `PendingOps`
+- `PendOk`
+- `AllowInjected`
+- `BlockReleased`
 - `TimedOutFailBlock`
 - `EventsDropped`
 - `PendingRejected`

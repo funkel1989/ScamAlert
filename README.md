@@ -246,7 +246,7 @@ $cred = Get-Credential -UserName dev
 Invoke-Command -VMName ScamAlertDev -Credential $cred -FilePath scripts/driver/probe-driver-stats.ps1
 ```
 
-`probe-driver-stats.ps1` reports counters such as `ClassifyHits`, `EventsQueued`, `EventsDequeued`, `DecisionsAllowed`, `DecisionsBlocked`, `PendingOps`, `TimedOutFailBlock`, `EventsDropped`, and `PendingRejected`. `probe-driver-events.ps1` drains raw driver events and does not complete decisions, so use it only when the bridge is stopped or when intentionally inspecting low-level driver output.
+`probe-driver-stats.ps1` reports counters such as `ClassifyEntered`, `SelfInjectedSkipped`, `EventsQueued`, `PendOk`, `AllowInjected`, `BlockReleased`, `TimedOutFailBlock`, `EventsDropped`, and `PendingRejected`. `probe-driver-events.ps1` drains raw driver events and does not complete decisions, so use it only when the bridge is stopped or when intentionally inspecting low-level driver output.
 
 Detailed driver docs:
 

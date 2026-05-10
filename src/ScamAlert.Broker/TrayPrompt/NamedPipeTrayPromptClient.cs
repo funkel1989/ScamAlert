@@ -60,9 +60,10 @@ public sealed class NamedPipeTrayPromptClient(ILogger<NamedPipeTrayPromptClient>
 
             var requestLine = JsonSerializer.Serialize(request, SignalJson.Options);
             await writer.WriteLineAsync(requestLine.AsMemory(), timeout.Token);
+            var requestBytes = Utf8NoBomStrict.GetByteCount(requestLine);
             logger.LogInformation(
                 "Tray prompt SENT. EventId={EventId} RequestBytes={RequestBytes}",
-                request.ObservedEventId, requestLine.Length);
+                request.ObservedEventId, requestBytes);
 
             var responseLine = await ReadFrameAsync(pipe, timeout.Token);
             if (string.IsNullOrWhiteSpace(responseLine))
@@ -74,7 +75,7 @@ public sealed class NamedPipeTrayPromptClient(ILogger<NamedPipeTrayPromptClient>
 
             logger.LogInformation(
                 "Tray prompt RECEIVED. EventId={EventId} ResponseBytes={ResponseBytes}",
-                request.ObservedEventId, responseLine.Length);
+                request.ObservedEventId, Utf8NoBomStrict.GetByteCount(responseLine));
 
             var response = JsonSerializer.Deserialize<DecisionPromptResponse>(
                 responseLine,

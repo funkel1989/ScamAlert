@@ -31,6 +31,7 @@ public sealed class DriverDeviceClient(string devicePath) : IDriverDeviceClient
         }
 
         var size = Marshal.SizeOf<NativeConnectionEvent>();
+        var sizeBytes = checked((uint)size);
         var buffer = Marshal.AllocHGlobal(size);
         try
         {
@@ -44,7 +45,7 @@ public sealed class DriverDeviceClient(string devicePath) : IDriverDeviceClient
                 _handle!,
                 NativeDriverIoctl.IoctlGetEvent,
                 buffer,
-                (uint)size);
+                sizeBytes);
 
             if (!ok)
             {
@@ -57,7 +58,7 @@ public sealed class DriverDeviceClient(string devicePath) : IDriverDeviceClient
                 return new DriverEventPollResult(DriverEventPollOutcome.DeviceUnavailable, null, err);
             }
 
-            if (bytesReturned < size)
+            if (bytesReturned < sizeBytes)
             {
                 throw new InvalidOperationException(
                     $"IOCTL_SCAMALERT_GET_EVENT returned {bytesReturned} bytes, expected {size}.");
@@ -78,6 +79,7 @@ public sealed class DriverDeviceClient(string devicePath) : IDriverDeviceClient
         if (!IsOpen) return;
 
         var size = Marshal.SizeOf<NativeConnectionDecision>();
+        var sizeBytes = checked((uint)size);
         var buffer = Marshal.AllocHGlobal(size);
         try
         {
@@ -86,7 +88,7 @@ public sealed class DriverDeviceClient(string devicePath) : IDriverDeviceClient
                 _handle!,
                 NativeDriverIoctl.IoctlCompleteEvent,
                 buffer,
-                (uint)size);
+                sizeBytes);
 
             if (!ok)
             {

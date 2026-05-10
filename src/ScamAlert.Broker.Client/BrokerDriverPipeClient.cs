@@ -19,6 +19,7 @@ public sealed class BrokerDriverPipeClient
 
     private readonly string _pipeName;
     private readonly TimeSpan _connectionTimeout;
+    private readonly int _connectionTimeoutMilliseconds;
     private readonly TimeSpan _requestTimeout;
 
     public BrokerDriverPipeClient()
@@ -38,6 +39,7 @@ public sealed class BrokerDriverPipeClient
 
         _pipeName = pipeName;
         _connectionTimeout = connectionTimeout;
+        _connectionTimeoutMilliseconds = ToConnectTimeoutMilliseconds(connectionTimeout);
         _requestTimeout = requestTimeout;
     }
 
@@ -55,7 +57,7 @@ public sealed class BrokerDriverPipeClient
 
         try
         {
-            await pipe.ConnectAsync((int)_connectionTimeout.TotalMilliseconds, cancellationToken);
+            await pipe.ConnectAsync(_connectionTimeoutMilliseconds, cancellationToken);
         }
         catch (TimeoutException ex)
         {
@@ -130,5 +132,19 @@ public sealed class BrokerDriverPipeClient
         {
             throw new BrokerPipeProtocolException("Broker pipe IO failure.", ex);
         }
+    }
+
+    private static int ToConnectTimeoutMilliseconds(TimeSpan connectionTimeout)
+    {
+        var totalMilliseconds = connectionTimeout.TotalMilliseconds;
+        if (totalMilliseconds > int.MaxValue)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(connectionTimeout),
+                connectionTimeout,
+                $"Connection timeout must be less than or equal to {int.MaxValue} milliseconds.");
+        }
+
+        return Math.Max(1, (int)Math.Ceiling(totalMilliseconds));
     }
 }

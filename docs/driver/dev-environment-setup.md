@@ -149,12 +149,12 @@ Invoke-Command -VMName ScamAlertDev -Credential $cred -FilePath scripts/driver/p
 
 The stats probe reads:
 
-- `ClassifyHits`
+- `ClassifyEntered`
+- `SelfInjectedSkipped`
 - `EventsQueued`
-- `EventsDequeued`
-- `DecisionsAllowed`
-- `DecisionsBlocked`
-- `PendingOps`
+- `PendOk`
+- `AllowInjected`
+- `BlockReleased`
 - `TimedOutFailBlock`
 - `EventsDropped`
 - `PendingRejected`

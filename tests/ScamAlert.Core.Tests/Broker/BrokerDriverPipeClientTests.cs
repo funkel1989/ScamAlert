@@ -68,6 +68,17 @@ public sealed class BrokerDriverPipeClientTests
             () => client.SendAttemptAsync(CreateAttempt()));
     }
 
+    [Fact]
+    public void Constructor_rejects_connection_timeout_that_cannot_be_represented_by_named_pipe_client()
+    {
+        var pipeName = $"scamalert-test-timeout-{Guid.NewGuid():N}";
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => new BrokerDriverPipeClient(
+            pipeName,
+            connectionTimeout: TimeSpan.FromMilliseconds((double)int.MaxValue + 1),
+            requestTimeout: TimeSpan.FromSeconds(2)));
+    }
+
     private static ProtectedConnectionAttempt CreateAttempt() => new(
         Guid.NewGuid(),
         DateTimeOffset.UtcNow,

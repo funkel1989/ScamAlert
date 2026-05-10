@@ -67,17 +67,26 @@ typedef struct SCAMALERT_CONNECTION_DECISION
     uint32_t Decision;                         // SCAMALERT_DRIVER_DECISION
 } SCAMALERT_CONNECTION_DECISION;
 
-// Diagnostic counters returned by IOCTL_SCAMALERT_GET_STATS. Lets us
-// introspect the Milestone B classify/pend path without DebugView.
+// Diagnostic counters returned by IOCTL_SCAMALERT_GET_STATS.
+//
+// The verdict-delivery model at FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V{4,6} is
+// "pend-and-reinject", not the reauth-driven model used elsewhere in WFP:
+//   * Allow = clone the NBL, FwpsCompleteOperation0(ctx, clone), then
+//             FwpsInjectTransportReceiveAsync0 the clone back into the stack;
+//             our classifyFn sees the clone again as a self-injected packet
+//             and short-circuits to PERMIT.
+//   * Block = FwpsCompleteOperation0(ctx, NULL) and drop the saved NBL
+//             reference; the original packet stays blocked from the
+//             classifyOut we set in the original classify hit.
 typedef struct SCAMALERT_DRIVER_STATS
 {
-    uint64_t ClassifyEntered;
-    uint64_t EventsQueued;
-    uint64_t AcquireOk;
-    uint64_t AcquireFailed;
-    uint64_t PendOk;
-    uint64_t PendFailed;
-    uint64_t ClassifyContextNull;
+    uint64_t ClassifyEntered;       // total entries into classify (incl. self-injected hits)
+    uint64_t SelfInjectedSkipped;   // hits we recognized as our own reinjection -> instant PERMIT
+    uint64_t EventsQueued;          // events placed on user-mode queue
+    uint64_t PendOk;                // FwpsPendOperation0 + state insert succeeded
+    uint64_t AllowInjected;         // FwpsInjectTransportReceiveAsync0 succeeded for ALLOW path
+    uint64_t BlockReleased;         // FwpsCompleteOperation0(ctx, NULL) issued for BLOCK path
+    uint64_t TimedOutFailOpen;      // 30s kernel timeout fired -> fail-open inject
 } SCAMALERT_DRIVER_STATS;
 
 #pragma pack(pop)

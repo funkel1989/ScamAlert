@@ -7,7 +7,6 @@
 #include <initguid.h>
 #include <fwpsk.h>
 #include <fwpmk.h>
-#include <ntstrsafe.h>
 
 #include "EventQueue.h"
 #include "PendingOps.h"
@@ -31,15 +30,21 @@ DEFINE_GUID(SCAMALERT_SUBLAYER,
 DEFINE_GUID(SCAMALERT_PROVIDER,
     0xb4ede861, 0x10f7, 0x4103, 0x89, 0x51, 0x94, 0xd2, 0x53, 0xf7, 0xae, 0x67);
 
-static HANDLE  g_EngineHandle      = nullptr;
+static HANDLE  g_EngineHandle        = nullptr;
+static HANDLE  g_InjectionHandle     = nullptr;
 static BOOLEAN g_CalloutV4Registered = FALSE;
 static BOOLEAN g_CalloutV6Registered = FALSE;
-static UINT32  g_CalloutV4Id       = 0;
-static UINT32  g_CalloutV6Id       = 0;
-static UINT64  g_FilterV4Id        = 0;
-static UINT64  g_FilterV6Id        = 0;
+static UINT32  g_CalloutV4Id         = 0;
+static UINT32  g_CalloutV6Id         = 0;
+static UINT64  g_FilterV4Id          = 0;
+static UINT64  g_FilterV6Id          = 0;
 
 static volatile LONG64 g_NextEventId = 0;
+
+HANDLE ScamAlertGetInjectionHandle()
+{
+    return g_InjectionHandle;
+}
 
 // ---------- helpers ----------
 
@@ -74,17 +79,81 @@ static BOOLEAN ScamAlertTryGetService(UINT16 localPort, _Out_ SCAMALERT_PROTECTE
     }
 }
 
+// classifyFn fires from DPC context (network indication), so EVERYTHING it
+// touches must be non-paged. The ntstrsafe.h printf family lives in paged
+// code (Rtl* -> woutput_l -> RtlpIsUtf8Process), so calling it from
+// classifyFn page-faults at IRQL=2 and bugchecks. We hand-roll the two
+// formatters we need below; they're tiny and IRQL-agnostic.
+
+// Writes an unsigned decimal value, returns characters written (excluding
+// the trailing NUL). Returns 0 if the destination can't hold value+NUL.
+static SIZE_T ScamAlertWriteUInt32Decimal(
+    _Out_writes_(maxChars) wchar_t* dest,
+    UINT32                          value,
+    SIZE_T                          maxChars)
+{
+    wchar_t scratch[11];               // max u32 is "4294967295" -> 10 digits
+    SIZE_T  digits = 0;
+    do
+    {
+        scratch[digits++] = static_cast<wchar_t>(L'0' + (value % 10));
+        value /= 10;
+    } while (value != 0 && digits < ARRAYSIZE(scratch));
+
+    if (digits + 1 > maxChars) return 0;
+
+    SIZE_T offset = 0;
+    for (SIZE_T i = digits; i > 0; --i)
+    {
+        dest[offset++] = scratch[i - 1];
+    }
+    return offset;
+}
+
+// Writes a single byte as two lowercase hex digits.
+static SIZE_T ScamAlertWriteByteHex(
+    _Out_writes_(maxChars) wchar_t* dest,
+    UINT8                           value,
+    SIZE_T                          maxChars)
+{
+    if (maxChars < 2) return 0;
+    static const wchar_t kHex[] = L"0123456789abcdef";
+    dest[0] = kHex[(value >> 4) & 0xf];
+    dest[1] = kHex[ value       & 0xf];
+    return 2;
+}
+
 static NTSTATUS ScamAlertWriteIpv4Source(UINT32 sourceAddressHostOrder, _Out_writes_(SCAMALERT_MAX_IP_CHARS) wchar_t* sourceIp)
 {
     // WFP delivers ALE_AUTH_RECV_ACCEPT_V4 IP_REMOTE_ADDRESS in host byte order.
-    return RtlStringCchPrintfW(
-        sourceIp,
-        SCAMALERT_MAX_IP_CHARS,
-        L"%u.%u.%u.%u",
-        static_cast<unsigned>((sourceAddressHostOrder >> 24) & 0xff),
-        static_cast<unsigned>((sourceAddressHostOrder >> 16) & 0xff),
-        static_cast<unsigned>((sourceAddressHostOrder >>  8) & 0xff),
-        static_cast<unsigned>( sourceAddressHostOrder        & 0xff));
+    const UINT32 octet[4] = {
+        (sourceAddressHostOrder >> 24) & 0xff,
+        (sourceAddressHostOrder >> 16) & 0xff,
+        (sourceAddressHostOrder >>  8) & 0xff,
+         sourceAddressHostOrder        & 0xff
+    };
+
+    wchar_t* p         = sourceIp;
+    SIZE_T   remaining = SCAMALERT_MAX_IP_CHARS;
+
+    for (int i = 0; i < 4; ++i)
+    {
+        SIZE_T written = ScamAlertWriteUInt32Decimal(p, octet[i], remaining);
+        if (written == 0) return STATUS_BUFFER_TOO_SMALL;
+        p         += written;
+        remaining -= written;
+
+        if (i < 3)
+        {
+            if (remaining < 2) return STATUS_BUFFER_TOO_SMALL;
+            *p++ = L'.';
+            --remaining;
+        }
+    }
+
+    if (remaining < 1) return STATUS_BUFFER_TOO_SMALL;
+    *p = L'\0';
+    return STATUS_SUCCESS;
 }
 
 static NTSTATUS ScamAlertWriteIpv6Source(const FWP_BYTE_ARRAY16* sourceAddress, _Out_writes_(SCAMALERT_MAX_IP_CHARS) wchar_t* sourceIp)
@@ -95,14 +164,32 @@ static NTSTATUS ScamAlertWriteIpv6Source(const FWP_BYTE_ARRAY16* sourceAddress, 
     }
 
     const UINT8* b = sourceAddress->byteArray16;
-    return RtlStringCchPrintfW(
-        sourceIp,
-        SCAMALERT_MAX_IP_CHARS,
-        L"%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x",
-        b[ 0], b[ 1], b[ 2], b[ 3],
-        b[ 4], b[ 5], b[ 6], b[ 7],
-        b[ 8], b[ 9], b[10], b[11],
-        b[12], b[13], b[14], b[15]);
+
+    wchar_t* p         = sourceIp;
+    SIZE_T   remaining = SCAMALERT_MAX_IP_CHARS;
+
+    // 8 colon-separated 16-bit groups, each rendered as 4 lowercase hex digits.
+    for (int group = 0; group < 8; ++group)
+    {
+        SIZE_T w1 = ScamAlertWriteByteHex(p, b[group * 2],     remaining);
+        if (w1 == 0) return STATUS_BUFFER_TOO_SMALL;
+        p += w1; remaining -= w1;
+
+        SIZE_T w2 = ScamAlertWriteByteHex(p, b[group * 2 + 1], remaining);
+        if (w2 == 0) return STATUS_BUFFER_TOO_SMALL;
+        p += w2; remaining -= w2;
+
+        if (group < 7)
+        {
+            if (remaining < 2) return STATUS_BUFFER_TOO_SMALL;
+            *p++ = L':';
+            --remaining;
+        }
+    }
+
+    if (remaining < 1) return STATUS_BUFFER_TOO_SMALL;
+    *p = L'\0';
+    return STATUS_SUCCESS;
 }
 
 static BOOLEAN ScamAlertIsReauthorize(const FWPS_INCOMING_METADATA_VALUES0* inMetaValues)
@@ -116,90 +203,140 @@ static BOOLEAN ScamAlertIsReauthorize(const FWPS_INCOMING_METADATA_VALUES0* inMe
 
 // ---------- classify functions ----------
 
-// Counters bumped from classify so we can introspect Milestone B
-// behavior without pulling up DebugView. ScamAlertGetMonitorCounters
-// exposes them via an IOCTL diagnostic call.
-static volatile LONG64 g_StatsClassifyEntered      = 0;
-static volatile LONG64 g_StatsEventsQueued         = 0;
-static volatile LONG64 g_StatsAcquireOk            = 0;
-static volatile LONG64 g_StatsAcquireFailed        = 0;
-static volatile LONG64 g_StatsPendOk               = 0;
-static volatile LONG64 g_StatsPendFailed           = 0;
-static volatile LONG64 g_StatsClassifyContextNull  = 0;
+// Diagnostic counters for the pend-and-reinject path. ScamAlertGetMonitorCounters
+// exposes them via the IOCTL_SCAMALERT_GET_STATS diagnostic call.
+static volatile LONG64 g_StatsClassifyEntered     = 0;
+static volatile LONG64 g_StatsSelfInjectedSkipped = 0;
+static volatile LONG64 g_StatsEventsQueued        = 0;
+static volatile LONG64 g_StatsPendOk              = 0;
+static volatile LONG64 g_StatsAllowInjected       = 0;
+static volatile LONG64 g_StatsBlockReleased       = 0;
+static volatile LONG64 g_StatsTimedOutFailOpen    = 0;
 
 VOID ScamAlertGetMonitorCounters(_Out_ LONG64* out)
 {
     out[0] = g_StatsClassifyEntered;
-    out[1] = g_StatsEventsQueued;
-    out[2] = g_StatsAcquireOk;
-    out[3] = g_StatsAcquireFailed;
-    out[4] = g_StatsPendOk;
-    out[5] = g_StatsPendFailed;
-    out[6] = g_StatsClassifyContextNull;
+    out[1] = g_StatsSelfInjectedSkipped;
+    out[2] = g_StatsEventsQueued;
+    out[3] = g_StatsPendOk;
+    out[4] = g_StatsAllowInjected;
+    out[5] = g_StatsBlockReleased;
+    out[6] = g_StatsTimedOutFailOpen;
 }
 
-// Always queues the event for observability; on top of that, tries to
-// pend so the broker can decide. If the pend chain fails for any
-// reason, we leave classifyOut on FWP_ACTION_PERMIT, which means the
-// kernel allows the connection (worst-case behavior is identical to
+VOID ScamAlertBumpAllowInjected()    { InterlockedIncrement64(&g_StatsAllowInjected); }
+VOID ScamAlertBumpBlockReleased()    { InterlockedIncrement64(&g_StatsBlockReleased); }
+VOID ScamAlertBumpTimedOutFailOpen() { InterlockedIncrement64(&g_StatsTimedOutFailOpen); }
+
+// Returns TRUE if WFP gave us a packet that was injected by our own driver.
+// At ALE_AUTH_RECV_ACCEPT this is the second classify hit on a permitted
+// connection (the clone we reinjected), and we short-circuit to PERMIT
+// rather than queueing the user another decision prompt.
+static BOOLEAN ScamAlertIsSelfInjected(_In_opt_ void* layerData)
+{
+    if (g_InjectionHandle == nullptr || layerData == nullptr) return FALSE;
+
+    FWPS_PACKET_INJECTION_STATE state = FwpsQueryPacketInjectionState0(
+        g_InjectionHandle, static_cast<NET_BUFFER_LIST*>(layerData), nullptr);
+
+    return state == FWPS_PACKET_INJECTED_BY_SELF ||
+           state == FWPS_PACKET_PREVIOUSLY_INJECTED_BY_SELF;
+}
+
+// Reads the per-layer interface index fields (different fixed-value indices
+// for V4 vs V6). Caller passes the layer-specific FWPS_FIELD_* enum values.
+static VOID ScamAlertReadInterfaceIndices(
+    _In_ const FWPS_INCOMING_VALUES0* inFixedValues,
+    _In_ UINT32                       interfaceFieldIndex,
+    _In_ UINT32                       subInterfaceFieldIndex,
+    _Out_ IF_INDEX*                   interfaceIndex,
+    _Out_ IF_INDEX*                   subInterfaceIndex)
+{
+    *interfaceIndex    = inFixedValues->incomingValue[interfaceFieldIndex].value.uint32;
+    *subInterfaceIndex = inFixedValues->incomingValue[subInterfaceFieldIndex].value.uint32;
+}
+
+// Pends the operation so user mode can decide. Captures every NBL/offload
+// field we'll need to clone+reinject the inbound packet later. The event is
+// always queued for observability before we attempt to pend; if any step
+// fails we leave classifyOut on PERMIT (worst-case behavior is identical to
 // Milestone A observe-only).
 static VOID ScamAlertPendForBrokerDecision(
-    _In_ const SCAMALERT_CONNECTION_EVENT* event,
-    _In_opt_ const void*                   classifyContext,
-    _In_ const FWPS_FILTER1*               filter,
-    _In_ UINT16                            layerId,
-    _Inout_ FWPS_CLASSIFY_OUT0*            classifyOut)
+    _In_ const SCAMALERT_CONNECTION_EVENT*       event,
+    _In_ const FWPS_INCOMING_VALUES0*            inFixedValues,
+    _In_ const FWPS_INCOMING_METADATA_VALUES0*   inMetaValues,
+    _Inout_opt_ void*                            layerData,
+    _In_ ADDRESS_FAMILY                          addressFamily,
+    _In_ UINT32                                  interfaceFieldIndex,
+    _In_ UINT32                                  subInterfaceFieldIndex,
+    _In_ UINT16                                  layerId,
+    _Inout_ FWPS_CLASSIFY_OUT0*                  classifyOut)
 {
-    UNREFERENCED_PARAMETER(layerId);
-
-    // 1. Observability comes first. If anything below fails, the user
-    //    still sees the attempt in the broker's signal log.
     if (NT_SUCCESS(ScamAlertQueueConnectionEvent(event)))
     {
         InterlockedIncrement64(&g_StatsEventsQueued);
     }
 
-    // 2. classifyContext is non-NULL only when WFP is willing to let
-    //    us pend / modify this classify. If null we cannot pend and
-    //    must fail-open immediately.
-    if (classifyContext == nullptr)
+    if (layerData == nullptr) return;
+
+    if ((inMetaValues->currentMetadataValues & FWPS_METADATA_FIELD_COMPLETION_HANDLE) == 0 ||
+        (inMetaValues->currentMetadataValues & FWPS_METADATA_FIELD_IP_HEADER_SIZE) == 0 ||
+        (inMetaValues->currentMetadataValues & FWPS_METADATA_FIELD_TRANSPORT_HEADER_SIZE) == 0 ||
+        (inMetaValues->currentMetadataValues & FWPS_METADATA_FIELD_COMPARTMENT_ID) == 0)
     {
-        InterlockedIncrement64(&g_StatsClassifyContextNull);
         return;
     }
 
-    UINT64 classifyHandle = 0;
-    NTSTATUS status = FwpsAcquireClassifyHandle0(
-        const_cast<void*>(classifyContext),
-        0,
-        &classifyHandle);
-    if (!NT_SUCCESS(status) || classifyHandle == 0)
+    SCAMALERT_PENDING_NODE* node = static_cast<SCAMALERT_PENDING_NODE*>(
+        ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(SCAMALERT_PENDING_NODE), SCAMALERT_POOL_TAG));
+    if (node == nullptr) return;
+
+    RtlCopyMemory(node->EventId, event->EventId, 16);
+    node->NetBufferList       = static_cast<NET_BUFFER_LIST*>(layerData);
+    node->AddressFamily       = addressFamily;
+    node->CompartmentId       = static_cast<COMPARTMENT_ID>(inMetaValues->compartmentId);
+    node->IpHeaderSize        = inMetaValues->ipHeaderSize;
+    node->TransportHeaderSize = inMetaValues->transportHeaderSize;
+    node->LayerId             = layerId;
+
+    ScamAlertReadInterfaceIndices(
+        inFixedValues, interfaceFieldIndex, subInterfaceFieldIndex,
+        &node->InterfaceIndex, &node->SubInterfaceIndex);
+
+    NET_BUFFER* nb = NET_BUFFER_LIST_FIRST_NB(node->NetBufferList);
+    node->NblOffset = (nb != nullptr) ? NET_BUFFER_DATA_OFFSET(nb) : 0;
+
+    // Reference the NBL so it survives past the classify call. The pending
+    // table releases the reference when the node is finally disposed.
+    FwpsReferenceNetBufferList0(node->NetBufferList, TRUE);
+
+    NTSTATUS status = FwpsPendOperation0(
+        inMetaValues->completionHandle, &node->CompletionContext);
+    if (!NT_SUCCESS(status) || node->CompletionContext == nullptr)
     {
-        InterlockedIncrement64(&g_StatsAcquireFailed);
+        FwpsDereferenceNetBufferList0(node->NetBufferList, FALSE);
+        ExFreePoolWithTag(node, SCAMALERT_POOL_TAG);
         return;
     }
-    InterlockedIncrement64(&g_StatsAcquireOk);
 
-    if (!NT_SUCCESS(ScamAlertAddPendingOp(event->EventId, classifyHandle, layerId)))
-    {
-        FwpsReleaseClassifyHandle0(classifyHandle);
-        return;
-    }
-
-    status = FwpsPendClassify0(classifyHandle, filter->filterId, 0, classifyOut);
+    status = ScamAlertAddPendingOp(node);
     if (!NT_SUCCESS(status))
     {
-        InterlockedIncrement64(&g_StatsPendFailed);
-        // Best-effort rollback. Our entry release path will call
-        // FwpsCompleteClassify0 + Release as cleanup.
-        ScamAlertCompletePendingOp(event->EventId, ScamAlertDecisionAllow);
+        // Insertion failed: roll back the pend and drop the NBL ref.
+        FwpsCompleteOperation0(node->CompletionContext, nullptr);
+        FwpsDereferenceNetBufferList0(node->NetBufferList, FALSE);
+        ExFreePoolWithTag(node, SCAMALERT_POOL_TAG);
         return;
     }
 
     InterlockedIncrement64(&g_StatsPendOk);
-    // FwpsPendClassify0 already set classifyOut to "pending block /
-    // ABSORB"; the bridge will subsequently complete the pending op
-    // via IOCTL_SCAMALERT_COMPLETE_EVENT.
+
+    // Tell WFP to hold this connection while we await the broker's verdict.
+    // The verdict is delivered out of band via FwpsCompleteOperation0 +
+    // FwpsInjectTransportReceiveAsync0 in ScamAlertCompletePendingOp.
+    classifyOut->actionType = FWP_ACTION_BLOCK;
+    classifyOut->rights    &= ~FWPS_RIGHT_ACTION_WRITE;
+    classifyOut->flags     |= FWPS_CLASSIFY_OUT_FLAG_ABSORB;
 }
 
 static VOID NTAPI ScamAlertClassifyRecvAcceptV4(
@@ -213,6 +350,8 @@ static VOID NTAPI ScamAlertClassifyRecvAcceptV4(
 {
     UNREFERENCED_PARAMETER(layerData);
     UNREFERENCED_PARAMETER(flowContext);
+    UNREFERENCED_PARAMETER(classifyContext);
+    UNREFERENCED_PARAMETER(filter);
 
     InterlockedIncrement64(&g_StatsClassifyEntered);
 
@@ -223,6 +362,21 @@ static VOID NTAPI ScamAlertClassifyRecvAcceptV4(
 
     classifyOut->actionType = FWP_ACTION_PERMIT;
 
+    // The reinjected clone of an allowed connection re-enters classify;
+    // recognize it and short-circuit to PERMIT without prompting again.
+    if (ScamAlertIsSelfInjected(layerData))
+    {
+        InterlockedIncrement64(&g_StatsSelfInjectedSkipped);
+        if (filter->flags & FWPS_FILTER_FLAG_CLEAR_ACTION_RIGHT)
+        {
+            classifyOut->rights &= ~FWPS_RIGHT_ACTION_WRITE;
+        }
+        return;
+    }
+
+    // ALE_AUTH_RECV_ACCEPT does not deliver verdicts via reauth; only the
+    // first hit is relevant. Reauth (which fires on policy changes) is
+    // simply permitted - we don't try to second-guess existing flows.
     if (ScamAlertIsReauthorize(inMetaValues))
     {
         return;
@@ -253,7 +407,16 @@ static VOID NTAPI ScamAlertClassifyRecvAcceptV4(
         return;
     }
 
-    ScamAlertPendForBrokerDecision(&event, classifyContext, filter, FWPS_LAYER_ALE_AUTH_RECV_ACCEPT_V4, classifyOut);
+    ScamAlertPendForBrokerDecision(
+        &event,
+        inFixedValues,
+        inMetaValues,
+        layerData,
+        AF_INET,
+        FWPS_FIELD_ALE_AUTH_RECV_ACCEPT_V4_INTERFACE_INDEX,
+        FWPS_FIELD_ALE_AUTH_RECV_ACCEPT_V4_SUB_INTERFACE_INDEX,
+        FWPS_LAYER_ALE_AUTH_RECV_ACCEPT_V4,
+        classifyOut);
 }
 
 static VOID NTAPI ScamAlertClassifyRecvAcceptV6(
@@ -267,6 +430,8 @@ static VOID NTAPI ScamAlertClassifyRecvAcceptV6(
 {
     UNREFERENCED_PARAMETER(layerData);
     UNREFERENCED_PARAMETER(flowContext);
+    UNREFERENCED_PARAMETER(classifyContext);
+    UNREFERENCED_PARAMETER(filter);
 
     InterlockedIncrement64(&g_StatsClassifyEntered);
 
@@ -276,6 +441,16 @@ static VOID NTAPI ScamAlertClassifyRecvAcceptV6(
     }
 
     classifyOut->actionType = FWP_ACTION_PERMIT;
+
+    if (ScamAlertIsSelfInjected(layerData))
+    {
+        InterlockedIncrement64(&g_StatsSelfInjectedSkipped);
+        if (filter->flags & FWPS_FILTER_FLAG_CLEAR_ACTION_RIGHT)
+        {
+            classifyOut->rights &= ~FWPS_RIGHT_ACTION_WRITE;
+        }
+        return;
+    }
 
     if (ScamAlertIsReauthorize(inMetaValues))
     {
@@ -309,7 +484,16 @@ static VOID NTAPI ScamAlertClassifyRecvAcceptV6(
         return;
     }
 
-    ScamAlertPendForBrokerDecision(&event, classifyContext, filter, FWPS_LAYER_ALE_AUTH_RECV_ACCEPT_V6, classifyOut);
+    ScamAlertPendForBrokerDecision(
+        &event,
+        inFixedValues,
+        inMetaValues,
+        layerData,
+        AF_INET6,
+        FWPS_FIELD_ALE_AUTH_RECV_ACCEPT_V6_INTERFACE_INDEX,
+        FWPS_FIELD_ALE_AUTH_RECV_ACCEPT_V6_SUB_INTERFACE_INDEX,
+        FWPS_LAYER_ALE_AUTH_RECV_ACCEPT_V6,
+        classifyOut);
 }
 
 static NTSTATUS NTAPI ScamAlertNotify(
@@ -452,7 +636,17 @@ static NTSTATUS ScamAlertAddFilter(
 
 NTSTATUS ScamAlertStartWfpMonitor(_In_ PDEVICE_OBJECT DeviceObject)
 {
-    NTSTATUS status = ScamAlertRegisterCallouts(DeviceObject);
+    // Injection handle must exist before classifyFn fires, since classify
+    // queries it to recognize self-injected packets. AF_UNSPEC covers both
+    // V4 and V6 reinjections.
+    NTSTATUS status = FwpsInjectionHandleCreate0(
+        AF_UNSPEC, FWPS_INJECTION_TYPE_TRANSPORT, &g_InjectionHandle);
+    if (!NT_SUCCESS(status))
+    {
+        return status;
+    }
+
+    status = ScamAlertRegisterCallouts(DeviceObject);
     if (!NT_SUCCESS(status))
     {
         ScamAlertStopWfpMonitor();
@@ -531,5 +725,11 @@ VOID ScamAlertStopWfpMonitor()
     {
         FwpsCalloutUnregisterByKey0(&SCAMALERT_CALLOUT_RECV_ACCEPT_V6);
         g_CalloutV6Registered = FALSE;
+    }
+
+    if (g_InjectionHandle != nullptr)
+    {
+        FwpsInjectionHandleDestroy0(g_InjectionHandle);
+        g_InjectionHandle = nullptr;
     }
 }

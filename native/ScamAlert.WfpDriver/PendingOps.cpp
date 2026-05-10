@@ -3,38 +3,80 @@
 #include <fwpsk.h>
 #include <fwpmk.h>
 
-#include "Device.h"     // for ScamAlertGetDeviceObject
-#include "EventQueue.h" // for SCAMALERT_POOL_TAG
+#include "Device.h"     // ScamAlertGetDeviceObject
+#include "EventQueue.h" // SCAMALERT_POOL_TAG
+#include "WfpMonitor.h" // ScamAlertGetInjectionHandle, counter bumpers
 
 // Wall-clock ceiling on how long a classify can stay pending before the
-// kernel timeout DPC completes it with a fail-open PERMIT. The bridge's
-// own broker request timeout is 30s, so we give the user-mode chain a
-// generous window before stepping in. 100-ns ticks: 30s * 10^7.
-constexpr LONGLONG ScamAlertPendingTimeoutTicks = 30LL * 10000000LL;
+// kernel timeout DPC fail-BLOCKS the connection. We deliberately fail-block
+// rather than fail-open here because reinjecting a clone whose underlying
+// connection has already TCP-timed-out is racy: NDIS state on the original
+// NBL can be partially torn down by the time we try to clone it, which
+// surfaced as IRQL_NOT_LESS_OR_EQUAL crashes during testing. The only place
+// we clone+reinject is the IOCTL path, where the broker is alive and the
+// connection is still fresh.
+//
+// Choosing 10s (less than TCP's ~21s SYN retry budget) means our timeout
+// fires before TCP gives up, so the connection is decisively blocked
+// rather than hanging in a half-state.
+constexpr LONGLONG ScamAlertPendingTimeoutTicks    = 10LL * 10000000LL;
+constexpr LONGLONG ScamAlertPendingScanPeriodTicks =  1LL * 10000000LL;
 
-// Period at which the timeout DPC scans the pending table.
-constexpr LONGLONG ScamAlertPendingScanPeriodTicks = 1LL * 10000000LL; // 1 second
+static LIST_ENTRY     g_PendingList;
+static KSPIN_LOCK     g_PendingLock;
+static BOOLEAN        g_PendingInitialized   = FALSE;
 
-static LIST_ENTRY  g_PendingList;
-static KSPIN_LOCK  g_PendingLock;
-static BOOLEAN     g_PendingInitialized = FALSE;
+static KTIMER         g_TimeoutTimer;
+static KDPC           g_TimeoutDpc;
+static PIO_WORKITEM   g_TimeoutWorkItem      = nullptr;
+static PDEVICE_OBJECT g_PendingDeviceObject  = nullptr;
 
-static KTIMER      g_TimeoutTimer;
-static KDPC        g_TimeoutDpc;
-static PIO_WORKITEM g_TimeoutWorkItem = nullptr;
-static PDEVICE_OBJECT g_PendingDeviceObject = nullptr;
+// Forward decls for paths invoked from both classify and timeout flows.
+static VOID ScamAlertReleasePendingNode(_In_ SCAMALERT_PENDING_NODE* node);
+static NTSTATUS ScamAlertAllowReinjectInbound(_Inout_ SCAMALERT_PENDING_NODE* node);
+static VOID ScamAlertBlockAndRelease(_In_ SCAMALERT_PENDING_NODE* node);
 
-// The work item completes pending classify handles at PASSIVE_LEVEL,
-// which Fwps* requires. We collect the to-be-completed handles in a
-// per-tick local list under the spinlock, then drop the lock and run
-// the completions.
+// Inject completion routine. Frees the cloned NBL and the pending node.
+// Called by WFP at <= DISPATCH_LEVEL once the reinjected packet has been
+// indicated to the stack.
+static VOID NTAPI ScamAlertInjectComplete(
+    _Inout_ void*            context,
+    _Inout_ NET_BUFFER_LIST* netBufferList,
+    _In_    BOOLEAN          dispatchLevel)
+{
+    UNREFERENCED_PARAMETER(dispatchLevel);
+
+    SCAMALERT_PENDING_NODE* node = static_cast<SCAMALERT_PENDING_NODE*>(context);
+
+    if (netBufferList != nullptr)
+    {
+        FwpsFreeCloneNetBufferList0(netBufferList, 0);
+    }
+    ScamAlertReleasePendingNode(node);
+}
+
+// Releases the saved NBL reference and frees the node's pool memory. Does
+// NOT call FwpsCompleteOperation0; the caller must have already disposed of
+// the completion context.
+static VOID ScamAlertReleasePendingNode(_In_ SCAMALERT_PENDING_NODE* node)
+{
+    if (node == nullptr) return;
+
+    if (node->NetBufferList != nullptr)
+    {
+        FwpsDereferenceNetBufferList0(node->NetBufferList, FALSE);
+        node->NetBufferList = nullptr;
+    }
+    ExFreePoolWithTag(node, SCAMALERT_POOL_TAG);
+}
+
+// Container handed to the timeout work routine: an array of nodes that
+// have been removed from the global list and are ready to be fail-opened.
 typedef struct SCAMALERT_TIMEOUT_BATCH
 {
-    LIST_ENTRY            Entry;
-    UINT64                ClassifyHandle;
+    LIST_ENTRY Entry;
+    SCAMALERT_PENDING_NODE* Node;
 } SCAMALERT_TIMEOUT_BATCH;
-
-static VOID ScamAlertCompleteHandleAtPassive(UINT64 classifyHandle, SCAMALERT_DRIVER_DECISION decision);
 
 static VOID NTAPI ScamAlertTimeoutWorkRoutine(
     _In_ PDEVICE_OBJECT DeviceObject,
@@ -49,9 +91,19 @@ static VOID NTAPI ScamAlertTimeoutWorkRoutine(
     {
         PLIST_ENTRY entry = RemoveHeadList(batchHead);
         SCAMALERT_TIMEOUT_BATCH* item = CONTAINING_RECORD(entry, SCAMALERT_TIMEOUT_BATCH, Entry);
-
-        ScamAlertCompleteHandleAtPassive(item->ClassifyHandle, ScamAlertDecisionAllow);
+        SCAMALERT_PENDING_NODE* node = item->Node;
         ExFreePoolWithTag(item, SCAMALERT_POOL_TAG);
+
+        if (node == nullptr) continue;
+
+        ScamAlertBumpTimedOutFailOpen();
+
+        // Fail-BLOCK: cleanly release the held operation without trying
+        // to clone+reinject. Cloning a possibly-stale NBL after the TCP
+        // layer has given up is racy (caused IRQL_NOT_LESS_OR_EQUAL during
+        // testing). The IOCTL path handles the live-connection case; the
+        // timeout path is just a safety net to release the kernel hold.
+        ScamAlertBlockAndRelease(node);
     }
 
     ExFreePoolWithTag(batchHead, SCAMALERT_POOL_TAG);
@@ -72,14 +124,13 @@ static VOID NTAPI ScamAlertTimeoutDpcRoutine(
 
     LARGE_INTEGER now;
     KeQueryTickCount(&now);
-    LONGLONG cutoffTicks = KeQueryTimeIncrement();
-    LONGLONG nowIn100ns = now.QuadPart * cutoffTicks;
+    LONGLONG nowIn100ns = now.QuadPart * KeQueryTimeIncrement();
 
-    // Gather expired entries under the spinlock, complete outside it
     LIST_ENTRY* batchHead = static_cast<LIST_ENTRY*>(
         ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(LIST_ENTRY), SCAMALERT_POOL_TAG));
     if (batchHead == nullptr) return;
     InitializeListHead(batchHead);
+
     BOOLEAN any = FALSE;
 
     KIRQL oldIrql;
@@ -91,7 +142,7 @@ static VOID NTAPI ScamAlertTimeoutDpcRoutine(
         PLIST_ENTRY next = entry->Flink;
         SCAMALERT_PENDING_NODE* node = CONTAINING_RECORD(entry, SCAMALERT_PENDING_NODE, Link);
 
-        if (nowIn100ns - node->PendedAtTicks.QuadPart > ScamAlertPendingTimeoutTicks)
+        if ((nowIn100ns - node->PendedAtTicks.QuadPart) > ScamAlertPendingTimeoutTicks)
         {
             RemoveEntryList(&node->Link);
 
@@ -99,12 +150,22 @@ static VOID NTAPI ScamAlertTimeoutDpcRoutine(
                 ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(SCAMALERT_TIMEOUT_BATCH), SCAMALERT_POOL_TAG));
             if (item != nullptr)
             {
-                item->ClassifyHandle = node->ClassifyHandle;
+                item->Node = node;
                 InsertTailList(batchHead, &item->Entry);
                 any = TRUE;
             }
-
-            ExFreePoolWithTag(node, SCAMALERT_POOL_TAG);
+            else
+            {
+                // Out of memory while building the batch: fall back to a
+                // blocking release inline (this still runs at DISPATCH but
+                // FwpsCompleteOperation0 tolerates it).
+                if (node->CompletionContext != nullptr)
+                {
+                    FwpsCompleteOperation0(node->CompletionContext, nullptr);
+                    node->CompletionContext = nullptr;
+                }
+                ScamAlertReleasePendingNode(node);
+            }
         }
 
         entry = next;
@@ -150,16 +211,9 @@ VOID ScamAlertDestroyPendingOps()
 {
     if (!g_PendingInitialized) return;
 
-    // Mark uninitialized FIRST so any DPC that fires between here and
-    // KeFlushQueuedDpcs sees the flag and exits without queueing a new
-    // work item (which could outlive the IoFreeWorkItem below).
     g_PendingInitialized = FALSE;
 
     KeCancelTimer(&g_TimeoutTimer);
-
-    // Wait for any in-flight DPCs (including ones scheduled by the
-    // timer just before cancel) to complete before freeing the work
-    // item they might queue.
     KeFlushQueuedDpcs();
 
     if (g_TimeoutWorkItem != nullptr)
@@ -168,7 +222,6 @@ VOID ScamAlertDestroyPendingOps()
         g_TimeoutWorkItem = nullptr;
     }
 
-    // Drain any remaining pending classifies and fail-open them.
     LIST_ENTRY drainList;
     InitializeListHead(&drainList);
 
@@ -181,60 +234,161 @@ VOID ScamAlertDestroyPendingOps()
     }
     KeReleaseSpinLock(&g_PendingLock, oldIrql);
 
+    // On destroy we fail BLOCK rather than fail-open. Reinjecting through a
+    // partially torn-down WFP stack is too risky; the user explicitly
+    // stopped the driver. Held connections die cleanly.
     while (!IsListEmpty(&drainList))
     {
         PLIST_ENTRY entry = RemoveHeadList(&drainList);
         SCAMALERT_PENDING_NODE* node = CONTAINING_RECORD(entry, SCAMALERT_PENDING_NODE, Link);
-        ScamAlertCompleteHandleAtPassive(node->ClassifyHandle, ScamAlertDecisionAllow);
-        ExFreePoolWithTag(node, SCAMALERT_POOL_TAG);
+        ScamAlertBlockAndRelease(node);
     }
 }
 
-NTSTATUS ScamAlertAddPendingOp(
-    _In_ const UINT8* EventId,
-    _In_ UINT64       ClassifyHandle,
-    _In_ UINT16       LayerId)
+NTSTATUS ScamAlertAddPendingOp(_In_ SCAMALERT_PENDING_NODE* Node)
 {
-    if (EventId == nullptr || ClassifyHandle == 0)
+    if (Node == nullptr || Node->CompletionContext == nullptr || Node->NetBufferList == nullptr)
     {
         return STATUS_INVALID_PARAMETER;
     }
 
-    SCAMALERT_PENDING_NODE* node = static_cast<SCAMALERT_PENDING_NODE*>(
-        ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(SCAMALERT_PENDING_NODE), SCAMALERT_POOL_TAG));
-    if (node == nullptr)
-    {
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    RtlCopyMemory(node->EventId, EventId, 16);
-    node->ClassifyHandle = ClassifyHandle;
-    node->LayerId        = LayerId;
-
     LARGE_INTEGER ticks;
     KeQueryTickCount(&ticks);
-    node->PendedAtTicks.QuadPart = ticks.QuadPart * KeQueryTimeIncrement();
+    Node->PendedAtTicks.QuadPart = ticks.QuadPart * KeQueryTimeIncrement();
 
     KIRQL oldIrql;
     KeAcquireSpinLock(&g_PendingLock, &oldIrql);
-    InsertTailList(&g_PendingList, &node->Link);
+    InsertTailList(&g_PendingList, &Node->Link);
     KeReleaseSpinLock(&g_PendingLock, oldIrql);
 
     return STATUS_SUCCESS;
 }
 
-static VOID ScamAlertCompleteHandleAtPassive(UINT64 classifyHandle, SCAMALERT_DRIVER_DECISION decision)
+// ALLOW path: clone the saved inbound NBL, hand the clone to
+// FwpsCompleteOperation0 (so WFP knows to release the held operation as
+// permitted), and FwpsInjectTransportReceiveAsync0 the clone back into the
+// stack. Our classifyFn detects the self-injection via
+// FwpsQueryPacketInjectionState0 and short-circuits to PERMIT.
+//
+// On any failure inside this helper, ownership of `node` and its
+// CompletionContext stays with the caller (we do not consume it), so the
+// caller can fall back to BLOCK. Successful inject transfers ownership of
+// the node to the inject completion routine.
+static NTSTATUS ScamAlertAllowReinjectInbound(_Inout_ SCAMALERT_PENDING_NODE* node)
 {
-    if (classifyHandle == 0) return;
+    if (node == nullptr || node->NetBufferList == nullptr || node->CompletionContext == nullptr)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
 
-    FWPS_CLASSIFY_OUT0 out = {};
-    out.actionType = (decision == ScamAlertDecisionBlock)
-        ? FWP_ACTION_BLOCK
-        : FWP_ACTION_PERMIT;
-    out.rights = FWPS_RIGHT_ACTION_WRITE;
+    HANDLE injectionHandle = ScamAlertGetInjectionHandle();
+    if (injectionHandle == nullptr)
+    {
+        return STATUS_INVALID_DEVICE_STATE;
+    }
 
-    FwpsCompleteClassify0(classifyHandle, 0, &out);
-    FwpsReleaseClassifyHandle0(classifyHandle);
+    NTSTATUS status            = STATUS_SUCCESS;
+    NET_BUFFER_LIST* clonedNbl = nullptr;
+    BOOLEAN advanced           = FALSE;
+
+    NET_BUFFER* netBuffer = NET_BUFFER_LIST_FIRST_NB(node->NetBufferList);
+
+    // The TCP/IP stack may have already retreated the NBL by the transport
+    // header size; mirror the inspect sample's logic and only retreat the
+    // delta so we don't double-retreat into corruption territory.
+    ULONG currentOffset = NET_BUFFER_DATA_OFFSET(netBuffer);
+    UINT32 effectiveTransport = node->TransportHeaderSize;
+    if (currentOffset != node->NblOffset)
+    {
+        effectiveTransport = 0;
+    }
+
+    NDIS_STATUS ndisStatus = NdisRetreatNetBufferDataStart(
+        netBuffer,
+        node->IpHeaderSize + effectiveTransport,
+        0,
+        nullptr);
+    if (ndisStatus != NDIS_STATUS_SUCCESS)
+    {
+        status = STATUS_UNSUCCESSFUL;
+        goto Exit;
+    }
+    advanced = TRUE;
+
+    status = FwpsAllocateCloneNetBufferList0(
+        node->NetBufferList, nullptr, nullptr, 0, &clonedNbl);
+
+    // Always undo the retreat on the original, even on clone failure.
+    NdisAdvanceNetBufferDataStart(
+        netBuffer,
+        node->IpHeaderSize + effectiveTransport,
+        FALSE,
+        nullptr);
+    advanced = FALSE;
+
+    if (!NT_SUCCESS(status) || clonedNbl == nullptr)
+    {
+        goto Exit;
+    }
+
+    // Hand the clone to FwpsCompleteOperation0 so WFP knows the held
+    // operation is being released as permitted.
+    FwpsCompleteOperation0(node->CompletionContext, clonedNbl);
+    node->CompletionContext = nullptr;
+
+    status = FwpsInjectTransportReceiveAsync0(
+        injectionHandle,
+        nullptr,
+        nullptr,
+        0,
+        node->AddressFamily,
+        node->CompartmentId,
+        node->InterfaceIndex,
+        node->SubInterfaceIndex,
+        clonedNbl,
+        ScamAlertInjectComplete,
+        node);
+
+    if (!NT_SUCCESS(status))
+    {
+        goto Exit;
+    }
+
+    // Both clone and node ownership transferred to the inject completion fn.
+    clonedNbl = nullptr;
+    ScamAlertBumpAllowInjected();
+    return STATUS_SUCCESS;
+
+Exit:
+    if (advanced)
+    {
+        NdisAdvanceNetBufferDataStart(
+            netBuffer,
+            node->IpHeaderSize + effectiveTransport,
+            FALSE,
+            nullptr);
+    }
+    if (clonedNbl != nullptr)
+    {
+        FwpsFreeCloneNetBufferList0(clonedNbl, 0);
+    }
+    return status;
+}
+
+// BLOCK path: tell WFP "release the held operation, no clone" and drop our
+// saved NBL reference. The original packet stays blocked from the
+// classifyOut value set during the original classify hit.
+static VOID ScamAlertBlockAndRelease(_In_ SCAMALERT_PENDING_NODE* node)
+{
+    if (node == nullptr) return;
+
+    if (node->CompletionContext != nullptr)
+    {
+        FwpsCompleteOperation0(node->CompletionContext, nullptr);
+        node->CompletionContext = nullptr;
+    }
+    ScamAlertBumpBlockReleased();
+    ScamAlertReleasePendingNode(node);
 }
 
 NTSTATUS ScamAlertCompletePendingOp(
@@ -243,7 +397,7 @@ NTSTATUS ScamAlertCompletePendingOp(
 {
     if (EventId == nullptr) return STATUS_INVALID_PARAMETER;
 
-    UINT64 handle = 0;
+    SCAMALERT_PENDING_NODE* node = nullptr;
 
     KIRQL oldIrql;
     KeAcquireSpinLock(&g_PendingLock, &oldIrql);
@@ -251,12 +405,11 @@ NTSTATUS ScamAlertCompletePendingOp(
     PLIST_ENTRY entry = g_PendingList.Flink;
     while (entry != &g_PendingList)
     {
-        SCAMALERT_PENDING_NODE* node = CONTAINING_RECORD(entry, SCAMALERT_PENDING_NODE, Link);
-        if (RtlEqualMemory(node->EventId, EventId, 16))
+        SCAMALERT_PENDING_NODE* candidate = CONTAINING_RECORD(entry, SCAMALERT_PENDING_NODE, Link);
+        if (RtlEqualMemory(candidate->EventId, EventId, 16))
         {
-            RemoveEntryList(&node->Link);
-            handle = node->ClassifyHandle;
-            ExFreePoolWithTag(node, SCAMALERT_POOL_TAG);
+            RemoveEntryList(&candidate->Link);
+            node = candidate;
             break;
         }
         entry = entry->Flink;
@@ -264,19 +417,23 @@ NTSTATUS ScamAlertCompletePendingOp(
 
     KeReleaseSpinLock(&g_PendingLock, oldIrql);
 
-    if (handle == 0)
+    if (node == nullptr)
     {
-        // Already completed (timeout) - that's fine, ignore.
+        // Already completed (timeout, duplicate IOCTL) - silently succeed.
         return STATUS_SUCCESS;
     }
 
-    if (KeGetCurrentIrql() == PASSIVE_LEVEL)
+    if (Decision == ScamAlertDecisionAllow)
     {
-        ScamAlertCompleteHandleAtPassive(handle, Decision);
+        NTSTATUS s = ScamAlertAllowReinjectInbound(node);
+        if (!NT_SUCCESS(s))
+        {
+            // Couldn't reinject - the safe fallback is to block.
+            ScamAlertBlockAndRelease(node);
+        }
         return STATUS_SUCCESS;
     }
 
-    // We're not at PASSIVE_LEVEL - shouldn't happen for IOCTL paths, but
-    // if it does, defer via a work item.
-    return STATUS_INVALID_DEVICE_STATE;
+    ScamAlertBlockAndRelease(node);
+    return STATUS_SUCCESS;
 }

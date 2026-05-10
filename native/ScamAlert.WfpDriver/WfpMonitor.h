@@ -5,8 +5,18 @@
 NTSTATUS ScamAlertStartWfpMonitor(_In_ PDEVICE_OBJECT DeviceObject);
 VOID     ScamAlertStopWfpMonitor();
 
-// Fills a 7-element LONG64 array with the diagnostic counters defined
-// in WfpMonitor.cpp. Caller must allocate the array; we don't take a
-// SCAMALERT_DRIVER_STATS* directly to avoid a header dependency in the
-// other direction.
+// Injection handle used to (a) reinject permitted inbound clones via
+// FwpsInjectTransportReceiveAsync0 and (b) recognize self-injected packets
+// in classifyFn via FwpsQueryPacketInjectionState0. NULL if WFP startup
+// failed; PendingOps treats that as fatal-for-this-op.
+HANDLE   ScamAlertGetInjectionHandle();
+
+// Fills a 7-element LONG64 array with the diagnostic counters defined in
+// WfpMonitor.cpp. Caller allocates the array; we don't take a
+// SCAMALERT_DRIVER_STATS* directly to avoid a circular header dependency.
 VOID ScamAlertGetMonitorCounters(_Out_writes_(7) LONG64* out);
+
+// Counter bumpers called from PendingOps.cpp on the verdict-delivery paths.
+VOID ScamAlertBumpAllowInjected();
+VOID ScamAlertBumpBlockReleased();
+VOID ScamAlertBumpTimedOutFailOpen();

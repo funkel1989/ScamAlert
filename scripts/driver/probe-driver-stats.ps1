@@ -1,13 +1,15 @@
 # Reads the driver's diagnostic counters via IOCTL_SCAMALERT_GET_STATS.
 # Run inside the VM (or via Invoke-Command -VMName -FilePath).
 #
-# Counters tell us where the Milestone B classify/pend path is firing
-# vs failing:
-#   - ClassifyEntered            inbound TCP attempts that hit our callout
-#   - EventsQueued               attempts that were queued for user mode
-#   - AcquireOk / AcquireFailed  FwpsAcquireClassifyHandle0 outcome
-#   - PendOk / PendFailed        FwpsPendClassify0 outcome
-#   - ClassifyContextNull        WFP didn't give us a classifyContext
+# Counters tell us where the Milestone B clone-and-reinject pend path is
+# firing vs failing:
+#   - ClassifyEntered      callout hits (includes self-injected reinjections)
+#   - SelfInjectedSkipped  recognized our own reinjection -> instant PERMIT
+#   - EventsQueued         attempts placed on the user-mode event queue
+#   - PendOk               FwpsPendOperation0 + state insert succeeded
+#   - AllowInjected        ALLOW path: clone+reinject succeeded
+#   - BlockReleased        BLOCK path: FwpsCompleteOperation0(ctx, NULL)
+#   - TimedOutFailOpen     30s kernel timeout fired -> fail-open
 
 [CmdletBinding()]
 param(
@@ -92,12 +94,12 @@ try {
 
     [pscustomobject]@{
         ClassifyEntered     = [Runtime.InteropServices.Marshal]::ReadInt64($buf,  0)
-        EventsQueued        = [Runtime.InteropServices.Marshal]::ReadInt64($buf,  8)
-        AcquireOk           = [Runtime.InteropServices.Marshal]::ReadInt64($buf, 16)
-        AcquireFailed       = [Runtime.InteropServices.Marshal]::ReadInt64($buf, 24)
-        PendOk              = [Runtime.InteropServices.Marshal]::ReadInt64($buf, 32)
-        PendFailed          = [Runtime.InteropServices.Marshal]::ReadInt64($buf, 40)
-        ClassifyContextNull = [Runtime.InteropServices.Marshal]::ReadInt64($buf, 48)
+        SelfInjectedSkipped = [Runtime.InteropServices.Marshal]::ReadInt64($buf,  8)
+        EventsQueued        = [Runtime.InteropServices.Marshal]::ReadInt64($buf, 16)
+        PendOk              = [Runtime.InteropServices.Marshal]::ReadInt64($buf, 24)
+        AllowInjected       = [Runtime.InteropServices.Marshal]::ReadInt64($buf, 32)
+        BlockReleased       = [Runtime.InteropServices.Marshal]::ReadInt64($buf, 40)
+        TimedOutFailOpen    = [Runtime.InteropServices.Marshal]::ReadInt64($buf, 48)
     } | Format-List
 }
 finally {

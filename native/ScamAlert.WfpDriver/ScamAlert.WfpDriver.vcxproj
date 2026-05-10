@@ -59,7 +59,7 @@
       <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory);$(MSBuildThisFileDirectory)..\ScamAlert.Driver.Shared;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>$(DDK_LIB_PATH)\fwpkclnt.lib;$(DDK_LIB_PATH)\netio.lib;$(DDK_LIB_PATH)\ntoskrnl.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(DDK_LIB_PATH)\fwpkclnt.lib;$(DDK_LIB_PATH)\netio.lib;$(DDK_LIB_PATH)\ntoskrnl.lib;$(DDK_LIB_PATH)\ndis.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <DriverSign>
       <FileDigestAlgorithm>sha256</FileDigestAlgorithm>

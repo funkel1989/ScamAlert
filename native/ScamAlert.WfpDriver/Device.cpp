@@ -74,12 +74,12 @@ static NTSTATUS ScamAlertDeviceControl(
 
             SCAMALERT_DRIVER_STATS* stats = static_cast<SCAMALERT_DRIVER_STATS*>(buffer);
             stats->ClassifyEntered     = static_cast<UINT64>(counters[0]);
-            stats->EventsQueued        = static_cast<UINT64>(counters[1]);
-            stats->AcquireOk           = static_cast<UINT64>(counters[2]);
-            stats->AcquireFailed       = static_cast<UINT64>(counters[3]);
-            stats->PendOk              = static_cast<UINT64>(counters[4]);
-            stats->PendFailed          = static_cast<UINT64>(counters[5]);
-            stats->ClassifyContextNull = static_cast<UINT64>(counters[6]);
+            stats->SelfInjectedSkipped = static_cast<UINT64>(counters[1]);
+            stats->EventsQueued        = static_cast<UINT64>(counters[2]);
+            stats->PendOk              = static_cast<UINT64>(counters[3]);
+            stats->AllowInjected       = static_cast<UINT64>(counters[4]);
+            stats->BlockReleased       = static_cast<UINT64>(counters[5]);
+            stats->TimedOutFailOpen    = static_cast<UINT64>(counters[6]);
 
             status = STATUS_SUCCESS;
             information = sizeof(SCAMALERT_DRIVER_STATS);

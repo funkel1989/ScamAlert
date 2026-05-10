@@ -122,55 +122,126 @@ Expect `Enabled`.
 
 ### 3b. Pick an OS image
 
-Two options. Pick one:
+Microsoft retired the pre-built `Windows 11 Dev VM .vhdx` downloads in
+2025 - the old `developer.microsoft.com/windows/downloads/virtual-machines`
+page no longer publishes them and there is no direct replacement.
 
-**Option A - Microsoft's Windows 11 Dev VM (recommended for speed).**
-Microsoft publishes a pre-built `.vhdx` of Windows 11 Enterprise with
-VS 2022 already installed. Free, valid 90 days (renewable by re-downloading).
+The supported path now is the **Windows 11 Enterprise evaluation ISO**:
 
-- URL: <https://developer.microsoft.com/windows/downloads/virtual-machines/>
-- Pick the "Hyper-V" image (~20 GB download).
-- Pros: zero install time, comes with VS already.
-- Cons: 90-day expiry. We do not care for now.
+- URL: <https://www.microsoft.com/en-us/evalcenter/evaluate-windows-11-enterprise>
+- Pick `Windows 11 Enterprise, version 25H2, x64, ISO`.
+- 90-day evaluation, no product key required. Refresh by reinstalling
+  when it expires (we will be done with this VM well before then).
 
-**Option B - Clean Windows 11 ISO.**
-Download a Windows 11 Pro ISO, create a fresh VM, install. Works long
-term. Adds ~30 minutes vs Option A.
+We do **not** want the IoT Enterprise LTSC ISO - it intentionally
+omits some store/dev tooling we may want later. Plain Win11 Enterprise
+is the right pick.
 
-### 3c. Create the VM
+The download lands as `Win11_25H2_EnglishInternational_x64.iso` or
+similar. Park it under `D:\HyperV\ISOs\` and remember the path.
 
-Once the `.vhdx` (Option A) or ISO (Option B) is on disk:
+### 3b-note. Win11 install requirements vs Hyper-V
+
+Windows 11 Setup will refuse to install on a VM that does not look
+"modern enough". For Hyper-V you must hit **all** of the following or
+the installer bails with a hardware-compatibility error:
+
+- VM **Generation 2** (UEFI, not BIOS).
+- vTPM enabled (`Set-VMKeyProtector` + `Enable-VMTPM`).
+- 4+ GB RAM, 64+ GB disk, 2+ vCPUs.
+- Secure Boot **ON** for the Windows 11 install.
+
+Test-signing for unsigned drivers requires Secure Boot **OFF**, so the
+order of operations matters: leave Secure Boot ON during install, then
+flip it OFF and enable test-signing once Windows is up. The PowerShell
+in `3c` does exactly that.
+
+### 3c. Create the VM (run as administrator on the host)
 
 ```powershell
-# Run as administrator
 $vmName   = 'ScamAlertDev'
-$switch   = 'Default Switch'   # comes with Hyper-V on Pro
-$vhdxPath = 'D:\HyperV\ScamAlertDev\ScamAlertDev.vhdx'   # your path
+$switch   = 'Default Switch'                                       # comes with Hyper-V on Pro
+$vmRoot   = 'D:\HyperV\ScamAlertDev'
+$isoPath  = 'D:\HyperV\ISOs\Win11_25H2_EnglishInternational_x64.iso'  # update to your downloaded ISO path
+$vhdxPath = Join-Path $vmRoot 'ScamAlertDev.vhdx'
+
+New-Item -ItemType Directory -Force -Path $vmRoot | Out-Null
+
+# Fresh dynamic VHDX, 80 GB max
+New-VHD -Path $vhdxPath -Dynamic -SizeBytes 80GB
 
 New-VM -Name $vmName -MemoryStartupBytes 8GB -Generation 2 `
        -VHDPath $vhdxPath -SwitchName $switch
+
 Set-VMProcessor $vmName -Count 4
 Set-VMMemory    $vmName -DynamicMemoryEnabled $false
-Set-VMFirmware  $vmName -EnableSecureBoot Off    # required for test-signing
-Start-VM        $vmName
+
+# vTPM is mandatory for Win11. The HgsKeyProtector pair lets us enable it without Active Directory.
+Set-VMKeyProtector -VMName $vmName -NewLocalKeyProtector
+Enable-VMTPM       -VMName $vmName
+
+# Mount the install ISO and force first boot from DVD
+Add-VMDvdDrive  -VMName $vmName -Path $isoPath
+$dvd = Get-VMDvdDrive -VMName $vmName
+Set-VMFirmware  -VMName $vmName -FirstBootDevice $dvd
+
+# Secure Boot must be ON during Win11 install. We turn it OFF after install.
+Set-VMFirmware -VMName $vmName -EnableSecureBoot On
+
+Start-VM $vmName
+vmconnect.exe $env:COMPUTERNAME $vmName
 ```
 
-8 GB RAM and 4 vCPUs is plenty for a driver dev box. Disable Dynamic
-Memory because kernel-mode allocation behavior is more predictable
-without it.
+8 GB RAM, 4 vCPUs, 80 GB disk is plenty for a driver dev box. Dynamic
+memory is off because kernel-mode allocation behavior is more
+predictable without it.
 
-### 3d. Inside the VM, one-time setup
+The `vmconnect.exe` line opens the Hyper-V console window so you can
+click through the Windows 11 installer:
 
-Connect via the Hyper-V Manager console once, then run **inside the
-VM** (admin PowerShell):
+- "Windows 11 Enterprise" edition.
+- "Custom: Install Windows only" -> select the single 80 GB unpartitioned drive.
+- Skip Microsoft account: pick "domain join" path on the network screen
+  to land on a local-account-only setup, or just disable the network
+  adapter mid-OOBE (`Set-VMNetworkAdapter -VMName ScamAlertDev -DeviceNaming On -SwitchName ''`).
+- Set local admin user `dev`, give it any password you will remember.
+
+After Windows finishes setup and reaches the desktop, **shut the VM
+down cleanly** (Start menu > Power > Shut down) before the next step.
+
+### 3d. Flip Secure Boot off, eject install ISO (run on host as admin)
+
+VM should be powered off. Then:
+
+```powershell
+$vmName = 'ScamAlertDev'
+
+# Test-signing requires Secure Boot off
+Set-VMFirmware -VMName $vmName -EnableSecureBoot Off
+
+# Detach the install ISO so it does not boot from DVD again
+Get-VMDvdDrive -VMName $vmName | Remove-VMDvdDrive
+
+Start-VM $vmName
+vmconnect.exe $env:COMPUTERNAME $vmName
+```
+
+### 3e. Inside the VM, one-time setup
+
+Connect via the Hyper-V console (the `vmconnect.exe` above), log in,
+open an **admin PowerShell** inside the VM, and run:
 
 ```powershell
 # Enable test-signing so unsigned drivers will load
 bcdedit /set testsigning on
 
-# Allow PowerShell Direct from the host
+# Allow PowerShell remoting (so the host can drive the VM via Invoke-Command)
 Enable-PSRemoting -Force
 Set-NetFirewallRule -Name 'WINRM-HTTP-In-TCP' -Enabled True
+
+# Trust the host as a remoting client (PowerShell Direct still works without this,
+# but having it makes WinRM-over-network optional in case PS Direct breaks)
+Set-Item WSMan:\localhost\Client\TrustedHosts -Value '*' -Force
 
 # Pin a stable computer name so we can target it from the host
 Rename-Computer -NewName ScamAlertDev -Force

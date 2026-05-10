@@ -1,8 +1,10 @@
 #include "Device.h"
+#include "EventQueue.h"
 
 static PDEVICE_OBJECT g_DeviceObject = nullptr;
 static UNICODE_STRING g_DeviceName    = RTL_CONSTANT_STRING(L"\\Device\\ScamAlertWfp");
 static UNICODE_STRING g_SymbolicLink  = RTL_CONSTANT_STRING(L"\\DosDevices\\ScamAlertWfp");
+static BOOLEAN        g_QueueInitialized = FALSE;
 
 static NTSTATUS ScamAlertCreateClose(
     _In_ PDEVICE_OBJECT DeviceObject,
@@ -16,9 +18,64 @@ static NTSTATUS ScamAlertCreateClose(
     return STATUS_SUCCESS;
 }
 
+static NTSTATUS ScamAlertDeviceControl(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _Inout_ PIRP Irp)
+{
+    UNREFERENCED_PARAMETER(DeviceObject);
+
+    PIO_STACK_LOCATION stack = IoGetCurrentIrpStackLocation(Irp);
+    const ULONG code         = stack->Parameters.DeviceIoControl.IoControlCode;
+    const ULONG inputLength  = stack->Parameters.DeviceIoControl.InputBufferLength;
+    const ULONG outputLength = stack->Parameters.DeviceIoControl.OutputBufferLength;
+    PVOID buffer             = Irp->AssociatedIrp.SystemBuffer;
+
+    NTSTATUS  status      = STATUS_INVALID_DEVICE_REQUEST;
+    ULONG_PTR information = 0;
+
+    if (code == IOCTL_SCAMALERT_GET_EVENT)
+    {
+        if (outputLength < sizeof(SCAMALERT_CONNECTION_EVENT))
+        {
+            status = STATUS_BUFFER_TOO_SMALL;
+        }
+        else
+        {
+            status = ScamAlertPopConnectionEvent(static_cast<SCAMALERT_CONNECTION_EVENT*>(buffer));
+            if (NT_SUCCESS(status))
+            {
+                information = sizeof(SCAMALERT_CONNECTION_EVENT);
+            }
+        }
+    }
+    else if (code == IOCTL_SCAMALERT_COMPLETE_EVENT)
+    {
+        if (inputLength < sizeof(SCAMALERT_CONNECTION_DECISION))
+        {
+            status = STATUS_BUFFER_TOO_SMALL;
+        }
+        else
+        {
+            status = ScamAlertCompleteConnectionEvent(static_cast<SCAMALERT_CONNECTION_DECISION*>(buffer));
+        }
+    }
+
+    Irp->IoStatus.Status = status;
+    Irp->IoStatus.Information = information;
+    IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    return status;
+}
+
 NTSTATUS ScamAlertCreateDevice(_In_ PDRIVER_OBJECT DriverObject)
 {
-    NTSTATUS status = IoCreateDevice(
+    NTSTATUS status = ScamAlertInitializeEventQueue();
+    if (!NT_SUCCESS(status))
+    {
+        return status;
+    }
+    g_QueueInitialized = TRUE;
+
+    status = IoCreateDevice(
         DriverObject,
         0,
         &g_DeviceName,
@@ -29,17 +86,22 @@ NTSTATUS ScamAlertCreateDevice(_In_ PDRIVER_OBJECT DriverObject)
 
     if (!NT_SUCCESS(status))
     {
+        ScamAlertDestroyEventQueue();
+        g_QueueInitialized = FALSE;
         return status;
     }
 
-    DriverObject->MajorFunction[IRP_MJ_CREATE] = ScamAlertCreateClose;
-    DriverObject->MajorFunction[IRP_MJ_CLOSE]  = ScamAlertCreateClose;
+    DriverObject->MajorFunction[IRP_MJ_CREATE]         = ScamAlertCreateClose;
+    DriverObject->MajorFunction[IRP_MJ_CLOSE]          = ScamAlertCreateClose;
+    DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = ScamAlertDeviceControl;
 
     status = IoCreateSymbolicLink(&g_SymbolicLink, &g_DeviceName);
     if (!NT_SUCCESS(status))
     {
         IoDeleteDevice(g_DeviceObject);
         g_DeviceObject = nullptr;
+        ScamAlertDestroyEventQueue();
+        g_QueueInitialized = FALSE;
         return status;
     }
 
@@ -54,5 +116,11 @@ VOID ScamAlertDeleteDevice()
     {
         IoDeleteDevice(g_DeviceObject);
         g_DeviceObject = nullptr;
+    }
+
+    if (g_QueueInitialized)
+    {
+        ScamAlertDestroyEventQueue();
+        g_QueueInitialized = FALSE;
     }
 }

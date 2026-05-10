@@ -10,7 +10,17 @@
 // so the same wire format is correct from kernel mode and from C# via
 // [StructLayout(LayoutKind.Sequential, Pack = 1)].
 
+#ifdef _KERNEL_MODE
+// Kernel mode: <ntddk.h> provides UINT8/UINT16/UINT32/UINT64 already.
+// Including <stdint.h> here pulls user-mode CRT into ring 0 and breaks
+// the build, so alias the stdint names to the kernel-mode equivalents.
+typedef UINT8  uint8_t;
+typedef UINT16 uint16_t;
+typedef UINT32 uint32_t;
+typedef UINT64 uint64_t;
+#else
 #include <stdint.h>
+#endif
 
 #define SCAMALERT_DEVICE_TYPE 0x8000
 

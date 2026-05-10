@@ -45,7 +45,8 @@ try {
         New-Item -ItemType Directory -Force -Path $dir | Out-Null
     } -ArgumentList $vmStagingDir
 
-    Write-Host "Copying .sys into VM ($([math]::Round((Get-Item $using:sysPath).Length/1KB,1)) KB)" -ForegroundColor Cyan
+    $sysSizeKB = [math]::Round((Get-Item $sysPath).Length / 1KB, 1)
+    Write-Host "Copying .sys into VM ($sysSizeKB KB)" -ForegroundColor Cyan
     Copy-Item -ToSession $session -Path $sysPath -Destination $vmSysPath -Force
 
     Write-Host "Registering service '$ServiceName' inside VM" -ForegroundColor Cyan

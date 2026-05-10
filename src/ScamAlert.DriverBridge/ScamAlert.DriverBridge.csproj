@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UserSecretsId>dotnet-ScamAlert.DriverBridge-c8a55d54-b2ae-486e-8a18-67c84f3b65a4</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.7" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ScamAlert.Broker.Client\ScamAlert.Broker.Client.csproj" />
+    <ProjectReference Include="..\ScamAlert.Contracts\ScamAlert.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

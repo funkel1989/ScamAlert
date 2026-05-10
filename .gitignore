@@ -10,3 +10,16 @@ artifacts/
 data/*.jsonl
 data/*.json
 logs/
+
+# Native driver build outputs
+native/**/build/
+native/packages/
+
+# .NET publish + worktree artifacts
+build/
+
+# Local kernel debugging artifacts
+*.dmp
+bugcheck.txt
+
+.serena/

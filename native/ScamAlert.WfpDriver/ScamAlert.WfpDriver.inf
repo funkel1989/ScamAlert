@@ -1,0 +1,50 @@
+;
+; ScamAlert.WfpDriver.inf - install metadata for the ScamAlert WFP monitor driver.
+;
+
+[Version]
+Signature="$WINDOWS NT$"
+Class=Extension
+ClassGuid={e2f84ce7-8efa-411c-aa69-97454ca4cb57}
+ExtensionId={f8b97d27-5d4e-4b1c-9e2a-3c5e6f7a8b9d}
+Provider=%ManufacturerName%
+DriverVer=05/09/2026,0.1.0.0
+CatalogFile=ScamAlert.WfpDriver.cat
+PnpLockdown=1
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[SourceDisksNames]
+1 = %DiskName%,,,""
+
+[SourceDisksFiles]
+ScamAlert.WfpDriver.sys = 1
+
+[Manufacturer]
+%ManufacturerName%=Standard,NTamd64
+
+[Standard.NTamd64]
+%ScamAlert.DeviceDesc%=ScamAlert_Device, Root\ScamAlertWfp
+
+[ScamAlert_Device.NT]
+CopyFiles=Drivers_Dir
+
+[Drivers_Dir]
+ScamAlert.WfpDriver.sys
+
+[ScamAlert_Device.NT.Services]
+AddService=ScamAlertWfp,0x00000002,ScamAlert_Service
+
+[ScamAlert_Service]
+DisplayName=%ScamAlert.ServiceDesc%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%12%\ScamAlert.WfpDriver.sys
+
+[Strings]
+ManufacturerName    = "ScamAlert"
+DiskName            = "ScamAlert WFP Monitor Installation Disk"
+ScamAlert.DeviceDesc = "ScamAlert WFP Monitor"
+ScamAlert.ServiceDesc = "ScamAlert WFP Monitor Driver"

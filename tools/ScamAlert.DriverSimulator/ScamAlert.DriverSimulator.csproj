@@ -1,6 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\ScamAlert.Broker.Client\ScamAlert.Broker.Client.csproj" />
     <ProjectReference Include="..\..\src\ScamAlert.Contracts\ScamAlert.Contracts.csproj" />
   </ItemGroup>
 

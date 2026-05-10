@@ -20,8 +20,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ScamAlert.Broker\ScamAlert.Broker.csproj" />
+    <ProjectReference Include="..\..\src\ScamAlert.Broker.Client\ScamAlert.Broker.Client.csproj" />
     <ProjectReference Include="..\..\src\ScamAlert.Contracts\ScamAlert.Contracts.csproj" />
     <ProjectReference Include="..\..\src\ScamAlert.Core\ScamAlert.Core.csproj" />
+    <ProjectReference Include="..\..\src\ScamAlert.DriverBridge\ScamAlert.DriverBridge.csproj" />
   </ItemGroup>
 
 </Project>

@@ -50,6 +50,7 @@ builder.Services.AddSingleton<IProtectionSettingsStore>(_ =>
 builder.Services.AddSingleton<IRememberedRuleStore>(_ =>
     new FileRememberedRuleStore(ScamAlertPaths.RulesFile));
 builder.Services.AddSingleton<IConnectionDecisionPrompt, NamedPipeTrayPromptClient>();
+builder.Services.AddSingleton<IRecentDecisionCache>(_ => new InMemoryRecentDecisionCache());
 builder.Services.AddSingleton<RemoteAccessBroker>();
 builder.Services.AddHostedService<NamedPipeDriverServer>();
 builder.Services.AddHostedService<CloudAlertDeliveryWorker>();

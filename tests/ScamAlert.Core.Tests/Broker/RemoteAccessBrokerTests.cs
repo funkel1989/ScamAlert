@@ -271,23 +271,170 @@ public sealed class RemoteAccessBrokerTests
         Assert.Equal(cancellationToken, fixture.Prompt.RequestCancellationToken);
     }
 
+    [Fact]
+    public async Task RecentDecisionShortCircuitsSecondAttemptOnSameSourceIpAndPortWithoutPrompting()
+    {
+        var firstAttempt = CreateAttempt();
+        var fixture = CreateFixture(response: new DecisionPromptResponse(
+            firstAttempt.EventId,
+            UserDecisionKind.AllowOnce,
+            Remember: false));
+
+        var first = await fixture.Broker.HandleAttemptAsync(firstAttempt, CancellationToken.None);
+
+        var retryAttempt = firstAttempt with
+        {
+            EventId = Guid.Parse("11111111-2222-3333-4444-555555555555")
+        };
+        var second = await fixture.Broker.HandleAttemptAsync(retryAttempt, CancellationToken.None);
+
+        Assert.Equal(DriverDecisionKind.Allow, first.Decision);
+        Assert.Equal(DriverDecisionKind.Allow, second.Decision);
+        Assert.Equal(retryAttempt.EventId, second.ObservedEventId);
+        Assert.Single(fixture.Prompt.Requests);
+    }
+
+    [Fact]
+    public async Task RecentDecisionCacheTtlExpiresAndAllowsRePrompt()
+    {
+        var attempt = CreateAttempt();
+        var clock = new FakeTimeProvider(DateTimeOffset.Parse("2026-05-06T12:00:00Z"));
+        var cache = new InMemoryRecentDecisionCache(TimeSpan.FromSeconds(5), clock);
+        var fixture = CreateFixture(
+            response: new DecisionPromptResponse(attempt.EventId, UserDecisionKind.AllowOnce, Remember: false),
+            recentDecisions: cache);
+
+        await fixture.Broker.HandleAttemptAsync(attempt, CancellationToken.None);
+
+        clock.Advance(TimeSpan.FromSeconds(6));
+
+        var retryAttempt = attempt with
+        {
+            EventId = Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        };
+        await fixture.Broker.HandleAttemptAsync(retryAttempt, CancellationToken.None);
+
+        Assert.Equal(2, fixture.Prompt.Requests.Count);
+    }
+
+    [Fact]
+    public async Task RecentDecisionDoesNotApplyAcrossDifferentSourceIps()
+    {
+        var attempt = CreateAttempt();
+        var fixture = CreateFixture(response: new DecisionPromptResponse(
+            attempt.EventId,
+            UserDecisionKind.AllowOnce,
+            Remember: false));
+
+        await fixture.Broker.HandleAttemptAsync(attempt, CancellationToken.None);
+
+        var differentSource = attempt with
+        {
+            EventId = Guid.Parse("99999999-0000-0000-0000-000000000000"),
+            SourceIp = "198.51.100.55"
+        };
+        await fixture.Broker.HandleAttemptAsync(differentSource, CancellationToken.None);
+
+        Assert.Equal(2, fixture.Prompt.Requests.Count);
+    }
+
+    [Fact]
+    public async Task RecentDecisionCachesBlockVerdictAndShortCircuitsRetries()
+    {
+        var attempt = CreateAttempt();
+        var fixture = CreateFixture(response: new DecisionPromptResponse(
+            attempt.EventId,
+            UserDecisionKind.BlockOnce,
+            Remember: false));
+
+        var first = await fixture.Broker.HandleAttemptAsync(attempt, CancellationToken.None);
+
+        var retry = attempt with
+        {
+            EventId = Guid.Parse("22222222-3333-4444-5555-666666666666")
+        };
+        var second = await fixture.Broker.HandleAttemptAsync(retry, CancellationToken.None);
+
+        Assert.Equal(DriverDecisionKind.Block, first.Decision);
+        Assert.Equal(DriverDecisionKind.Block, second.Decision);
+        Assert.Single(fixture.Prompt.Requests);
+    }
+
+    [Fact]
+    public async Task RecentDecisionTtlSlidesOnHitSoSustainedRetriesStayCoalesced()
+    {
+        var attempt = CreateAttempt();
+        var clock = new FakeTimeProvider(DateTimeOffset.Parse("2026-05-06T12:00:00Z"));
+        var cache = new InMemoryRecentDecisionCache(TimeSpan.FromSeconds(5), clock);
+        var fixture = CreateFixture(
+            response: new DecisionPromptResponse(attempt.EventId, UserDecisionKind.AllowOnce, Remember: false),
+            recentDecisions: cache);
+
+        await fixture.Broker.HandleAttemptAsync(attempt, CancellationToken.None);
+
+        // Three retries each 4s apart - each one is within the TTL of the
+        // previous access, so the sliding refresh keeps the entry warm.
+        // Total elapsed: 12s, well past the original 5s TTL window.
+        for (var i = 0; i < 3; i++)
+        {
+            clock.Advance(TimeSpan.FromSeconds(4));
+            var retry = attempt with { EventId = Guid.NewGuid() };
+            await fixture.Broker.HandleAttemptAsync(retry, CancellationToken.None);
+        }
+
+        Assert.Single(fixture.Prompt.Requests);
+    }
+
+    [Fact]
+    public async Task RecentDecisionCachesTimeoutPolicyDecision()
+    {
+        var fixture = CreateFixture(
+            settings: new ProtectionSettings(TimeoutPolicy.AllowOnTimeout, PromptTimeoutSeconds: 10),
+            response: null);
+
+        await fixture.Broker.HandleAttemptAsync(CreateAttempt(), CancellationToken.None);
+
+        var retry = CreateAttempt() with
+        {
+            EventId = Guid.Parse("33333333-4444-5555-6666-777777777777")
+        };
+        var second = await fixture.Broker.HandleAttemptAsync(retry, CancellationToken.None);
+
+        Assert.Equal(DriverDecisionKind.Allow, second.Decision);
+        Assert.Equal("timeoutPolicy", second.Reason);
+        // Both attempts hit the prompt: first to time it out, second short-circuits via cache.
+        Assert.Single(fixture.Prompt.Requests);
+    }
+
+    private sealed class FakeTimeProvider(DateTimeOffset start) : TimeProvider
+    {
+        private DateTimeOffset now = start;
+
+        public override DateTimeOffset GetUtcNow() => now;
+
+        public void Advance(TimeSpan delta) => now = now.Add(delta);
+    }
+
     private static BrokerFixture CreateFixture(
         ProtectionSettings? settings = null,
         DecisionPromptResponse? response = null,
-        TestSignalSink? signalSink = null)
+        TestSignalSink? signalSink = null,
+        IRecentDecisionCache? recentDecisions = null)
     {
         var settingsStore = new TestProtectionSettingsStore(settings ?? ProtectionSettings.Default);
         var rememberedRules = new TestRememberedRuleStore();
         signalSink ??= new TestSignalSink();
         var prompt = new TestConnectionDecisionPrompt(response);
+        recentDecisions ??= new InMemoryRecentDecisionCache(TimeSpan.FromMinutes(5));
         var broker = new RemoteAccessBroker(
             settingsStore,
             rememberedRules,
             signalSink,
             prompt,
-            new RemoteAccessPolicyEngine());
+            new RemoteAccessPolicyEngine(),
+            recentDecisions);
 
-        return new BrokerFixture(broker, settingsStore, rememberedRules, signalSink, prompt);
+        return new BrokerFixture(broker, settingsStore, rememberedRules, signalSink, prompt, recentDecisions);
     }
 
     private static ProtectedConnectionAttempt CreateAttempt()
@@ -305,7 +452,8 @@ public sealed class RemoteAccessBrokerTests
         TestProtectionSettingsStore SettingsStore,
         TestRememberedRuleStore RememberedRules,
         TestSignalSink SignalSink,
-        TestConnectionDecisionPrompt Prompt);
+        TestConnectionDecisionPrompt Prompt,
+        IRecentDecisionCache RecentDecisions);
 
     private sealed class TestProtectionSettingsStore(ProtectionSettings settings) : IProtectionSettingsStore
     {

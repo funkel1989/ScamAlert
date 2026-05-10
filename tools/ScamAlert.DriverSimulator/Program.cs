@@ -1,6 +1,5 @@
-using System.IO.Pipes;
-using System.Text;
 using System.Text.Json;
+using ScamAlert.Broker.Client;
 using ScamAlert.Contracts;
 
 const int UnprotectedPortExitCode = 2;
@@ -22,75 +21,17 @@ var attempt = new ProtectedConnectionAttempt(
     port,
     service);
 
-await using var pipe = new NamedPipeClientStream(
-    ".",
-    "scamalert-driver-events",
-    PipeDirection.InOut,
-    PipeOptions.Asynchronous);
+var client = new BrokerDriverPipeClient();
 
 try
 {
-    await pipe.ConnectAsync(3000);
-
-    using var protocolTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-
-    using var reader = new StreamReader(
-        pipe,
-        Encoding.UTF8,
-        detectEncodingFromByteOrderMarks: false,
-        leaveOpen: true);
-
-    await using var writer = new StreamWriter(
-        pipe,
-        new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
-        leaveOpen: true)
-    {
-        AutoFlush = true
-    };
-
-    await writer.WriteLineAsync(JsonSerializer.Serialize(attempt, SignalJson.Options).AsMemory(), protocolTimeout.Token);
-
-    var responseLine = await reader.ReadLineAsync(protocolTimeout.Token);
-    if (string.IsNullOrWhiteSpace(responseLine))
-    {
-        Console.Error.WriteLine("Broker pipe closed without a response.");
-        return PipeProtocolFailureExitCode;
-    }
-
-    var response = JsonSerializer.Deserialize<DriverDecisionResponse>(responseLine, SignalJson.Options);
-    if (response is null)
-    {
-        Console.Error.WriteLine("Broker pipe returned an invalid response.");
-        return PipeProtocolFailureExitCode;
-    }
-
-    if (response.ObservedEventId != attempt.EventId)
-    {
-        Console.Error.WriteLine("Broker pipe returned a response for a different event.");
-        return PipeProtocolFailureExitCode;
-    }
-
+    var response = await client.SendAttemptAsync(attempt);
     Console.WriteLine(JsonSerializer.Serialize(response, SignalJson.Options));
     return 0;
 }
-catch (TimeoutException)
-{
-    Console.Error.WriteLine("Broker pipe is unavailable.");
-    return PipeProtocolFailureExitCode;
-}
-catch (IOException ex)
+catch (BrokerPipeProtocolException ex)
 {
     Console.Error.WriteLine($"Broker pipe protocol failed: {ex.Message}");
-    return PipeProtocolFailureExitCode;
-}
-catch (OperationCanceledException)
-{
-    Console.Error.WriteLine("Broker pipe response timed out.");
-    return PipeProtocolFailureExitCode;
-}
-catch (JsonException ex)
-{
-    Console.Error.WriteLine($"Broker pipe returned malformed JSON: {ex.Message}");
     return PipeProtocolFailureExitCode;
 }
 

@@ -10,3 +10,8 @@ artifacts/
 data/*.jsonl
 data/*.json
 logs/
+
+# Native driver build outputs
+native/**/build/
+native/packages/
+.serena/

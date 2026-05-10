@@ -2,10 +2,12 @@ namespace ScamAlert.Core.Broker;
 
 public sealed class InMemoryRecentDecisionCache : IRecentDecisionCache
 {
-    // 5s comfortably covers TCP's first two SYN retransmits (~3s, ~9s
-    // depending on tuning); after that, treating a fresh SYN as a brand-new
-    // attempt and re-prompting is the right behavior.
-    public static readonly TimeSpan DefaultTtl = TimeSpan.FromSeconds(5);
+    // 30s comfortably covers Windows TCP's full SYN retransmit budget
+    // (typically ~3s, ~9s, ~21s before the client gives up). Combined with
+    // sliding TTL refresh on hits, a sustained burst of retries from the
+    // same source coalesces into a single user prompt; once the retries
+    // stop, the entry expires naturally.
+    public static readonly TimeSpan DefaultTtl = TimeSpan.FromSeconds(30);
 
     private readonly TimeSpan ttl;
     private readonly TimeProvider clock;
@@ -37,6 +39,10 @@ public sealed class InMemoryRecentDecisionCache : IRecentDecisionCache
             {
                 if (now - entry.SetAt <= ttl)
                 {
+                    // Sliding TTL: extend the window on every hit so a
+                    // burst of retransmits keeps the entry alive. The
+                    // entry only expires once retries actually stop.
+                    entries[key] = entry with { SetAt = now };
                     decision = entry.Decision;
                     return true;
                 }

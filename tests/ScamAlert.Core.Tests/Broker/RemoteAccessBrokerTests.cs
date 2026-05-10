@@ -361,6 +361,31 @@ public sealed class RemoteAccessBrokerTests
     }
 
     [Fact]
+    public async Task RecentDecisionTtlSlidesOnHitSoSustainedRetriesStayCoalesced()
+    {
+        var attempt = CreateAttempt();
+        var clock = new FakeTimeProvider(DateTimeOffset.Parse("2026-05-06T12:00:00Z"));
+        var cache = new InMemoryRecentDecisionCache(TimeSpan.FromSeconds(5), clock);
+        var fixture = CreateFixture(
+            response: new DecisionPromptResponse(attempt.EventId, UserDecisionKind.AllowOnce, Remember: false),
+            recentDecisions: cache);
+
+        await fixture.Broker.HandleAttemptAsync(attempt, CancellationToken.None);
+
+        // Three retries each 4s apart - each one is within the TTL of the
+        // previous access, so the sliding refresh keeps the entry warm.
+        // Total elapsed: 12s, well past the original 5s TTL window.
+        for (var i = 0; i < 3; i++)
+        {
+            clock.Advance(TimeSpan.FromSeconds(4));
+            var retry = attempt with { EventId = Guid.NewGuid() };
+            await fixture.Broker.HandleAttemptAsync(retry, CancellationToken.None);
+        }
+
+        Assert.Single(fixture.Prompt.Requests);
+    }
+
+    [Fact]
     public async Task RecentDecisionCachesTimeoutPolicyDecision()
     {
         var fixture = CreateFixture(

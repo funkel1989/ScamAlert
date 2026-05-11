@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ScamAlert.Data;
 
@@ -10,9 +11,11 @@ using ScamAlert.Data;
 namespace ScamAlert.Data.Migrations
 {
     [DbContext(typeof(ScamAlertDbContext))]
-    partial class ScamAlertDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260511122715_AddAlertTelemetryAndNotes")]
+    partial class AddAlertTelemetryAndNotes
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.7");
@@ -96,58 +99,6 @@ namespace ScamAlert.Data.Migrations
                     b.HasIndex("DeviceId", "CreatedUtc");
 
                     b.ToTable("AlertEvents");
-                });
-
-            modelBuilder.Entity("ScamAlert.Data.Entities.AuthUserCredential", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTimeOffset>("CreatedUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("CustomerScopeCsv")
-                        .IsRequired()
-                        .HasMaxLength(2000)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("FailedLoginCount")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTimeOffset?>("LastLoginUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTimeOffset?>("LockoutEndUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("PasswordHash")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("RolesCsv")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTimeOffset>("UpdatedUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Username")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Username")
-                        .IsUnique();
-
-                    b.ToTable("AuthUserCredentials");
                 });
 
             modelBuilder.Entity("ScamAlert.Data.Entities.Contact", b =>
@@ -235,13 +186,6 @@ namespace ScamAlert.Data.Migrations
                     b.Property<string>("ExternalDeviceId")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTimeOffset?>("IngestApiKeyCreatedUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("IngestApiKeyHash")
-                        .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("IsActive")

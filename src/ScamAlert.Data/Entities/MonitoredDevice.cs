@@ -6,6 +6,8 @@ public sealed class MonitoredDevice
     public Guid CustomerId { get; set; }
     public string DeviceName { get; set; } = string.Empty;
     public string ExternalDeviceId { get; set; } = string.Empty;
+    public string? IngestApiKeyHash { get; set; }
+    public DateTimeOffset? IngestApiKeyCreatedUtc { get; set; }
     public bool IsActive { get; set; }
     public DateTimeOffset CreatedUtc { get; set; }
     public DateTimeOffset UpdatedUtc { get; set; }

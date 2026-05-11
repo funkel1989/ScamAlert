@@ -1,14 +1,20 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using ScamAlert.Api.Contracts;
+using ScamAlert.Api.Services.Auth;
 using ScamAlert.Data;
 using ScamAlert.Data.Entities;
 using ScamAlert.Data.Enums;
 
 namespace ScamAlert.Api.Controllers;
 
-public sealed class CustomersController(ScamAlertDbContext dbContext) : BaseApiController
+public sealed class CustomersController(
+    ScamAlertDbContext dbContext,
+    IPasswordHasher passwordHasher,
+    IAuthorizationService authorizationService) : BaseApiController
 {
+    [Authorize(Policy = AuthPolicies.AdminOnly)]
     [HttpPost]
     public async Task<IActionResult> Create(CreateCustomerRequest request, CancellationToken cancellationToken)
     {
@@ -31,6 +37,10 @@ public sealed class CustomersController(ScamAlertDbContext dbContext) : BaseApiC
 
         var now = DateTimeOffset.UtcNow;
         var customerId = Guid.NewGuid();
+        var deviceProvisioning = request.Devices
+            .Select(x => new { Request = x, ApiKey = GenerateApiKey() })
+            .ToList();
+
         var customer = new Customer
         {
             Id = customerId,
@@ -62,12 +72,14 @@ public sealed class CustomersController(ScamAlertDbContext dbContext) : BaseApiC
                 CreatedUtc = now,
                 UpdatedUtc = now
             }).ToList(),
-            Devices = request.Devices.Select(x => new MonitoredDevice
+            Devices = deviceProvisioning.Select(x => new MonitoredDevice
             {
                 Id = Guid.NewGuid(),
                 CustomerId = customerId,
-                DeviceName = x.DeviceName,
-                ExternalDeviceId = x.ExternalDeviceId,
+                DeviceName = x.Request.DeviceName,
+                ExternalDeviceId = x.Request.ExternalDeviceId,
+                IngestApiKeyHash = passwordHasher.HashPassword(x.ApiKey),
+                IngestApiKeyCreatedUtc = now,
                 IsActive = true,
                 CreatedUtc = now,
                 UpdatedUtc = now
@@ -82,7 +94,15 @@ public sealed class CustomersController(ScamAlertDbContext dbContext) : BaseApiC
             customer.Id,
             customer.Name,
             customer.Email,
-            Devices = customer.Devices.Select(x => new { x.Id, x.DeviceName, x.ExternalDeviceId }),
+            Devices = customer.Devices.Select(x => new
+            {
+                x.Id,
+                x.DeviceName,
+                x.ExternalDeviceId,
+                ingestApiKey = deviceProvisioning
+                    .Single(p => p.Request.ExternalDeviceId == x.ExternalDeviceId)
+                    .ApiKey
+            }),
             Contacts = customer.Contacts.Select(x => new { x.Id, x.FullName, x.PhoneNumber, x.EscalationOrder })
         });
     }
@@ -102,6 +122,12 @@ public sealed class CustomersController(ScamAlertDbContext dbContext) : BaseApiC
             return NotFound();
         }
 
+        var auth = await authorizationService.AuthorizeAsync(User, customer.Id, AuthPolicies.CustomerScope);
+        if (!auth.Succeeded)
+        {
+            return Forbid();
+        }
+
         return Ok(new
         {
             customer.Id,
@@ -115,5 +141,10 @@ public sealed class CustomersController(ScamAlertDbContext dbContext) : BaseApiC
             Subscriptions = customer.Subscriptions
                 .Select(x => new { x.Id, x.PlanCode, x.Status, x.StartsUtc, x.EndsUtc })
         });
+    }
+
+    private static string GenerateApiKey()
+    {
+        return Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
     }
 }

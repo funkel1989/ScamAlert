@@ -97,8 +97,16 @@ public sealed class CloudAlertDeliveryWorker(
             try
             {
                 using var content = CreateJsonContent(item);
-                using var response = await client.PostAsync("api/alerts", content, cancellationToken)
-                    .ConfigureAwait(false);
+                using var request = new HttpRequestMessage(HttpMethod.Post, "api/alerts")
+                {
+                    Content = content
+                };
+                if (!string.IsNullOrWhiteSpace(options.DeviceIngestApiKey))
+                {
+                    request.Headers.TryAddWithoutValidation("X-ScamAlert-DeviceKey", options.DeviceIngestApiKey);
+                }
+
+                using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
                 if (response.IsSuccessStatusCode)
                 {

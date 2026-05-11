@@ -105,10 +105,32 @@ Run the API:
 dotnet run --project src/ScamAlert.Api/ScamAlert.Api.csproj
 ```
 
+Get a bearer token (development bootstrap user shown):
+
+```powershell
+curl -X POST "http://localhost:5000/api/auth/token" `
+  -H "Content-Type: application/json" `
+  -d "{\"username\":\"operator\",\"password\":\"dev-password\"}"
+```
+
+Production auth notes:
+
+- Do not store real credentials in appsettings.
+- Set `Authentication:BootstrapAdmin:Enabled=true` only for initial bootstrap, then disable it.
+- Supply a high-entropy `Authentication:Jwt:SigningKey` (at least 32 bytes).
+- Keep `Authentication:Jwt:RequireHttpsMetadata=true` in production.
+
+Use the returned token in authenticated API calls:
+
+```powershell
+$token = "<paste-access-token>"
+```
+
 Create a customer with contacts/devices:
 
 ```powershell
 curl -X POST "http://localhost:5000/api/customers" `
+  -H "Authorization: Bearer $token" `
   -H "Content-Type: application/json" `
   -d "{\"name\":\"Contoso\",\"email\":\"owner@contoso.com\",\"planCode\":\"pro\",\"contacts\":[{\"fullName\":\"Primary Admin\",\"phoneNumber\":\"+15555550100\",\"escalationOrder\":1},{\"fullName\":\"Secondary Admin\",\"phoneNumber\":\"+15555550101\",\"escalationOrder\":2}],\"devices\":[{\"deviceName\":\"Reception PC\",\"externalDeviceId\":\"device-001\"}]}"
 ```
@@ -117,11 +139,32 @@ Raise an alert and simulate acknowledgment at escalation step 2:
 
 ```powershell
 curl -X POST "http://localhost:5000/api/alerts" `
+  -H "Authorization: Bearer $token" `
   -H "Content-Type: application/json" `
-  -d "{\"externalDeviceId\":\"device-001\",\"sourceIp\":\"203.0.113.10\",\"destinationPort\":3389,\"service\":\"rdp\",\"simulateAcknowledgeAtEscalationOrder\":2,\"clientEventId\":null}"
+  -d "{\"externalDeviceId\":\"device-001\",\"sourceIp\":\"203.0.113.10\",\"destinationPort\":3389,\"service\":\"rdp\",\"destinationIp\":null,\"transport\":\"tcp\",\"direction\":\"inbound\",\"observedBy\":\"broker\",\"ruleApplied\":null,\"decisionReason\":null,\"notes\":null,\"simulateAcknowledgeAtEscalationOrder\":2,\"clientEventId\":null}"
+```
+
+Local broker ingest can call the same endpoint without bearer JWT by sending the provisioned device key header:
+
+```text
+X-ScamAlert-DeviceKey: <device-ingest-api-key>
 ```
 
 Include a stable `clientEventId` (for example the broker attempt `EventId`) when callers may retry the same logical alert; duplicate posts with the same `clientEventId` for the same device return the existing alert without sending notifications again.
+
+List and filter alerts:
+
+```powershell
+curl "http://localhost:5000/api/alerts?status=Pending&page=1&pageSize=25" `
+  -H "Authorization: Bearer $token"
+```
+
+Recent connections for a device:
+
+```powershell
+curl "http://localhost:5000/api/devices/<device-guid>/recent-connections?take=50" `
+  -H "Authorization: Bearer $token"
+```
 
 ## Twilio SMS Configuration
 
@@ -138,6 +181,11 @@ Webhook endpoints used by Twilio:
 
 - `POST /api/webhooks/twilio/status` - delivery/failure callback updates `NotificationAttempt`.
 - `POST /api/webhooks/twilio/inbound-sms` - parses replies like `ACK ABC123` and marks the alert acknowledged.
+
+Webhook security:
+
+- `Twilio:ValidateWebhookSignatures` should remain `true` in production.
+- `Twilio:WebhookPublicBaseUrl` should match the public base URL Twilio calls (for signature verification).
 
 Current acknowledgment flow:
 
@@ -279,6 +327,7 @@ Configure in `src/ScamAlert.Broker/appsettings.json` (or environment variables) 
 - `CloudAlerts:Enabled` - set `true` to enqueue and deliver.
 - `CloudAlerts:BaseUrl` - API root (for example `http://localhost:5000`).
 - `CloudAlerts:ExternalDeviceId` - must match a device `externalDeviceId` registered for an active customer subscription.
+- `CloudAlerts:DeviceIngestApiKey` - API key generated when the device is provisioned (returned by `POST /api/customers`).
 - `CloudAlerts:DedupeWindowSeconds` - suppress duplicate enqueues for the same `(ExternalDeviceId, source IP, destination port)` within this window.
 - `CloudAlerts:MaxDeliveryAttempts`, `InitialRetryDelaySeconds`, `MaxRetryDelaySeconds`, `PollIntervalSeconds` - outbound retry and polling behavior.
 

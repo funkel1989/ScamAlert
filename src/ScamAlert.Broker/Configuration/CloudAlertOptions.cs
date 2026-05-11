@@ -10,6 +10,8 @@ public sealed class CloudAlertOptions
 
     public string ExternalDeviceId { get; set; } = string.Empty;
 
+    public string DeviceIngestApiKey { get; set; } = string.Empty;
+
     public int DedupeWindowSeconds { get; set; } = 600;
 
     public int MaxDeliveryAttempts { get; set; } = 8;

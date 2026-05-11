@@ -2,6 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using ScamAlert.Api.HostedServices;
 using ScamAlert.Api.Services.Alerts;
+using ScamAlert.Api.Services.Audit;
+using ScamAlert.Api.Services.Auth;
 using ScamAlert.Api.Services.Notifications;
 using ScamAlert.Data;
 
@@ -19,15 +21,21 @@ builder.Services.AddDbContext<ScamAlertDbContext>(options =>
     options.UseSqlite(connectionString);
 });
 builder.Services.Configure<AlertsOptions>(builder.Configuration.GetSection(AlertsOptions.SectionName));
+builder.Services.AddScamAlertAuthentication(
+    builder.Configuration,
+    useTestingAuth: builder.Environment.IsEnvironment("Testing"));
 builder.Services.AddScoped<AlertContactNotifier>();
 builder.Services.AddScoped<AlertWorkflowService>();
 builder.Services.AddScoped<AlertEscalationProcessor>();
+builder.Services.AddHostedService<AuthBootstrapHostedService>();
 if (!builder.Environment.IsEnvironment("Testing"))
 {
     builder.Services.AddHostedService<AlertEscalationWorker>();
 }
 builder.Services.Configure<TwilioOptions>(builder.Configuration.GetSection(TwilioOptions.SectionName));
 builder.Services.AddHttpClient<TwilioNotificationGateway>();
+builder.Services.AddScoped<ITwilioRequestValidator, TwilioRequestValidator>();
+builder.Services.AddSingleton<IAuditLogger, AuditLogger>();
 builder.Services.AddScoped<LoggingNotificationGateway>();
 builder.Services.AddScoped<INotificationGateway>(provider =>
 {
@@ -60,6 +68,8 @@ if (!app.Environment.IsEnvironment("Testing"))
     app.UseHttpsRedirection();
 }
 
+app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 
 app.MapControllers();

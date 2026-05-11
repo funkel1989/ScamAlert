@@ -11,6 +11,7 @@ public sealed class ScamAlertDbContext(DbContextOptions<ScamAlertDbContext> opti
     public DbSet<Subscription> Subscriptions => Set<Subscription>();
     public DbSet<AlertEvent> AlertEvents => Set<AlertEvent>();
     public DbSet<NotificationAttempt> NotificationAttempts => Set<NotificationAttempt>();
+    public DbSet<AuthUserCredential> AuthUserCredentials => Set<AuthUserCredential>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -34,6 +35,7 @@ public sealed class ScamAlertDbContext(DbContextOptions<ScamAlertDbContext> opti
             entity.HasKey(x => x.Id);
             entity.Property(x => x.DeviceName).HasMaxLength(200);
             entity.Property(x => x.ExternalDeviceId).HasMaxLength(100);
+            entity.Property(x => x.IngestApiKeyHash).HasMaxLength(500);
             entity.HasIndex(x => x.ExternalDeviceId).IsUnique();
         });
 
@@ -48,6 +50,13 @@ public sealed class ScamAlertDbContext(DbContextOptions<ScamAlertDbContext> opti
             entity.HasKey(x => x.Id);
             entity.Property(x => x.SourceIp).HasMaxLength(64);
             entity.Property(x => x.Service).HasMaxLength(32);
+            entity.Property(x => x.DestinationIp).HasMaxLength(64);
+            entity.Property(x => x.Transport).HasMaxLength(16);
+            entity.Property(x => x.Direction).HasMaxLength(16);
+            entity.Property(x => x.ObservedBy).HasMaxLength(64);
+            entity.Property(x => x.RuleApplied).HasMaxLength(128);
+            entity.Property(x => x.DecisionReason).HasMaxLength(128);
+            entity.Property(x => x.Notes).HasMaxLength(500);
             entity.HasIndex(x => new { x.DeviceId, x.CreatedUtc });
             entity.HasIndex(x => new { x.DeviceId, x.ClientEventId })
                 .IsUnique()
@@ -63,6 +72,16 @@ public sealed class ScamAlertDbContext(DbContextOptions<ScamAlertDbContext> opti
             entity.Property(x => x.Notes).HasMaxLength(500);
             entity.HasIndex(x => x.AcknowledgmentToken).IsUnique();
             entity.HasIndex(x => new { x.AlertEventId, x.AttemptedUtc });
+        });
+
+        modelBuilder.Entity<AuthUserCredential>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Username).HasMaxLength(200);
+            entity.Property(x => x.PasswordHash).HasMaxLength(500);
+            entity.Property(x => x.RolesCsv).HasMaxLength(500);
+            entity.Property(x => x.CustomerScopeCsv).HasMaxLength(2000);
+            entity.HasIndex(x => x.Username).IsUnique();
         });
     }
 }

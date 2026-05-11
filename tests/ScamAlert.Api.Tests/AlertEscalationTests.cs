@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using ScamAlert.Api.Services.Alerts;
@@ -32,9 +33,13 @@ public sealed class AlertEscalationTests
             });
 
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        var createDoc = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var ingestApiKey = createDoc.GetProperty("devices")[0].GetProperty("ingestApiKey").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(ingestApiKey));
 
-        var alertResponse = await client.PostAsJsonAsync(
-            "/api/alerts",
+        var alertRequest = new HttpRequestMessage(HttpMethod.Post, "/api/alerts")
+        {
+            Content = JsonContent.Create(
             new
             {
                 externalDeviceId = deviceId,
@@ -43,7 +48,10 @@ public sealed class AlertEscalationTests
                 service = "ssh",
                 simulateAcknowledgeAtEscalationOrder = (int?)null,
                 clientEventId = (Guid?)null
-            });
+            })
+        };
+        alertRequest.Headers.TryAddWithoutValidation("X-ScamAlert-DeviceKey", ingestApiKey);
+        var alertResponse = await client.SendAsync(alertRequest);
 
         Assert.Equal(HttpStatusCode.Created, alertResponse.StatusCode);
         Assert.Equal(1, factory.CountingGateway.NotifyCallCount);

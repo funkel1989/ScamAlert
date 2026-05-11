@@ -28,6 +28,9 @@ public sealed class AlertsIdempotencyTests
             });
 
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        var createDoc = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var ingestApiKey = createDoc.GetProperty("devices")[0].GetProperty("ingestApiKey").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(ingestApiKey));
 
         var clientEventId = Guid.NewGuid();
         var body = new
@@ -40,11 +43,21 @@ public sealed class AlertsIdempotencyTests
             clientEventId
         };
 
-        var first = await client.PostAsJsonAsync("/api/alerts", body);
+        var firstRequest = new HttpRequestMessage(HttpMethod.Post, "/api/alerts")
+        {
+            Content = JsonContent.Create(body)
+        };
+        firstRequest.Headers.TryAddWithoutValidation("X-ScamAlert-DeviceKey", ingestApiKey);
+        var first = await client.SendAsync(firstRequest);
         Assert.Equal(HttpStatusCode.Created, first.StatusCode);
         Assert.Equal(1, factory.CountingGateway.NotifyCallCount);
 
-        var second = await client.PostAsJsonAsync("/api/alerts", body);
+        var secondRequest = new HttpRequestMessage(HttpMethod.Post, "/api/alerts")
+        {
+            Content = JsonContent.Create(body)
+        };
+        secondRequest.Headers.TryAddWithoutValidation("X-ScamAlert-DeviceKey", ingestApiKey);
+        var second = await client.SendAsync(secondRequest);
         Assert.Equal(HttpStatusCode.Created, second.StatusCode);
         Assert.Equal(1, factory.CountingGateway.NotifyCallCount);
 

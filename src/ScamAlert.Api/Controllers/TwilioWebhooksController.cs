@@ -1,17 +1,31 @@
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using ScamAlert.Api.Services.Audit;
+using ScamAlert.Api.Services.Notifications;
 using ScamAlert.Data;
 using ScamAlert.Data.Enums;
 
 namespace ScamAlert.Api.Controllers;
 
 [Route("api/webhooks/twilio")]
-public sealed class TwilioWebhooksController(ScamAlertDbContext dbContext) : ControllerBase
+[AllowAnonymous]
+public sealed class TwilioWebhooksController(
+    ScamAlertDbContext dbContext,
+    ITwilioRequestValidator twilioRequestValidator,
+    IAuditLogger auditLogger) : ControllerBase
 {
     [HttpPost("status")]
     public async Task<IActionResult> MessageStatus([FromQuery] Guid? attemptId, CancellationToken cancellationToken)
     {
+        var form = await Request.ReadFormAsync(cancellationToken);
+        if (!twilioRequestValidator.IsValid(Request, form))
+        {
+            auditLogger.WebhookRejected("twilio", "status", HttpContext.Connection.RemoteIpAddress?.ToString());
+            return Unauthorized();
+        }
+
         if (attemptId is null)
         {
             return Ok();
@@ -25,7 +39,6 @@ public sealed class TwilioWebhooksController(ScamAlertDbContext dbContext) : Con
             return NotFound();
         }
 
-        var form = await Request.ReadFormAsync(cancellationToken);
         var messageSid = form["MessageSid"].ToString();
         var messageStatus = form["MessageStatus"].ToString();
         var errorCode = form["ErrorCode"].ToString();
@@ -54,6 +67,12 @@ public sealed class TwilioWebhooksController(ScamAlertDbContext dbContext) : Con
     public async Task<IActionResult> InboundSms(CancellationToken cancellationToken)
     {
         var form = await Request.ReadFormAsync(cancellationToken);
+        if (!twilioRequestValidator.IsValid(Request, form))
+        {
+            auditLogger.WebhookRejected("twilio", "inbound-sms", HttpContext.Connection.RemoteIpAddress?.ToString());
+            return Unauthorized();
+        }
+
         var body = form["Body"].ToString();
         var from = form["From"].ToString();
         var ackToken = ParseAckToken(body);

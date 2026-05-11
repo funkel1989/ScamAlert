@@ -8,4 +8,6 @@ public sealed class TwilioOptions
     public string AuthToken { get; set; } = string.Empty;
     public string FromPhoneNumber { get; set; } = string.Empty;
     public string? StatusCallbackBaseUrl { get; set; }
+    public bool ValidateWebhookSignatures { get; set; } = true;
+    public string? WebhookPublicBaseUrl { get; set; }
 }

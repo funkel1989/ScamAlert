@@ -24,6 +24,8 @@ This branch also includes the native Windows Filtering Platform (WFP) monitor an
 - `src/ScamAlert.Tray` - Windows tray app and decision prompt UI.
 - `src/ScamAlert.DriverBridge` - user-mode worker that reads events from `\\.\ScamAlertWfp`, asks the broker for a decision, and completes the kernel event.
 - `src/ScamAlert.Api` - ASP.NET Core API host for controller-based endpoints.
+- `src/ScamAlert.AppHost` - .NET Aspire orchestrator (runs API + dashboard for local dev).
+- `src/ScamAlert.ServiceDefaults` - shared Aspire service defaults (OpenTelemetry, health, resilience) referenced by the API.
 - `src/ScamAlert.Data` - EF Core data layer (SQLite) for customers, subscriptions, contacts, devices, alerts, and notification attempts.
 - `native/ScamAlert.WfpDriver` - native WFP callout driver for protected inbound ports.
 - `native/ScamAlert.Driver.Shared` - C-compatible IOCTL contract shared by the driver and managed bridge.
@@ -70,6 +72,28 @@ Use the solution launch profile named `StartUp` if Visual Studio shows it. That 
 If Visual Studio asks for a startup project instead, configure multiple startup projects and set both `src\ScamAlert.Broker\ScamAlert.Broker.csproj` and `src\ScamAlert.Tray\ScamAlert.Tray.csproj` to `Start`.
 
 The tray app shows a shield icon in the Windows system tray. It may be hidden in the tray overflow menu.
+
+## Launch With Aspire (backend API)
+
+One-time template install (if `aspire-apphost` is not already on your machine):
+
+```powershell
+dotnet new install Aspire.ProjectTemplates
+```
+
+Run the AppHost (opens the Aspire dashboard and starts `ScamAlert.Api`):
+
+```powershell
+dotnet run --project src/ScamAlert.AppHost/ScamAlert.AppHost.csproj
+```
+
+The AppHost injects `ConnectionStrings__ScamAlertDb` pointing at:
+
+```text
+%LOCALAPPDATA%\ScamAlert\AspireDev\scamalert.db
+```
+
+EF migrations still run automatically when the API starts, so the schema matches the current model.
 
 ## Launch The Simulator Path
 

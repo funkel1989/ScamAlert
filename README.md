@@ -10,7 +10,7 @@ This branch also includes the native Windows Filtering Platform (WFP) monitor an
 - [x] Native WFP driver + DriverBridge dev path for RDP/SSH/Telnet attempts in a test VM.
 - [x] Local JSONL signal writing and remembered allow/block IP rules.
 - [x] API endpoints for customer creation and alert raising.
-- [x] EF Core SQLite persistence for customers, subscriptions, contacts, devices, alerts, and notification attempts.
+- [x] EF Core SQL Server persistence for customers, subscriptions, contacts, devices, alerts, and notification attempts.
 - [x] Twilio-ready SMS notification gateway with DB-backed acknowledgment tokens and inbound acknowledgment webhook.
 - [x] Background escalation worker (time-based primary-to-secondary escalation after no response).
 - [x] Broker cloud alert uplink (optional): deduped enqueue, durable outbox, HTTP retries, dead-letter on permanent failures.
@@ -26,7 +26,7 @@ This branch also includes the native Windows Filtering Platform (WFP) monitor an
 - `src/ScamAlert.Api` - ASP.NET Core API host for controller-based endpoints.
 - `src/ScamAlert.AppHost` - .NET Aspire orchestrator (runs API + dashboard for local dev).
 - `src/ScamAlert.ServiceDefaults` - shared Aspire service defaults (OpenTelemetry, health, resilience) referenced by the API.
-- `src/ScamAlert.Data` - EF Core data layer (SQLite) for customers, subscriptions, contacts, devices, alerts, and notification attempts.
+- `src/ScamAlert.Data` - EF Core data layer (SQL Server) for customers, subscriptions, contacts, devices, alerts, and notification attempts.
 - `native/ScamAlert.WfpDriver` - native WFP callout driver for protected inbound ports.
 - `native/ScamAlert.Driver.Shared` - C-compatible IOCTL contract shared by the driver and managed bridge.
 - `scripts/driver` - host/VM setup, build, deploy, traffic prep, and diagnostic scripts for the WFP path.
@@ -40,6 +40,7 @@ This branch also includes the native Windows Filtering Platform (WFP) monitor an
 
 - Windows
 - .NET 10 SDK
+- SQL Server LocalDB (included with Visual Studio) for running the API and integration tests outside Aspire, or use Aspire AppHost which runs SQL Server in a container
 - Visual Studio 2022, optional but useful for running broker and tray together
 - Optional for native driver work: Visual Studio C++ tooling, Windows Driver Kit, Hyper-V, and a Windows test-signing VM. Do not enable test-signing on your daily workstation.
 
@@ -87,13 +88,9 @@ Run the AppHost (opens the Aspire dashboard and starts `ScamAlert.Api`):
 dotnet run --project src/ScamAlert.AppHost/ScamAlert.AppHost.csproj
 ```
 
-The AppHost injects `ConnectionStrings__ScamAlertDb` pointing at:
+The AppHost injects `ConnectionStrings__ScamAlertDb` for the SQL Server database resource (`ScamAlertDb` in `AppHost.cs`). When you run the API alone, `appsettings.json` defaults to LocalDB (`ScamAlert` database on `(localdb)\mssqllocaldb`).
 
-```text
-%LOCALAPPDATA%\ScamAlert\AspireDev\scamalert.db
-```
-
-EF migrations still run automatically when the API starts, so the schema matches the current model.
+EF Core migrations run automatically when the API starts (`Database.Migrate()`).
 
 ## Launch The Simulator Path
 

@@ -12,7 +12,7 @@ using ScamAlert.Data;
 namespace ScamAlert.Data.Migrations
 {
     [DbContext(typeof(ScamAlertDbContext))]
-    [Migration("20260511210317_InitialCreate_SqlServer")]
+    [Migration("20260512201628_InitialCreate_SqlServer")]
     partial class InitialCreate_SqlServer
     {
         /// <inheritdoc />
@@ -99,7 +99,7 @@ namespace ScamAlert.Data.Migrations
 
                     b.HasIndex("DeviceId", "ClientEventId")
                         .IsUnique()
-                        .HasFilter("\"ClientEventId\" IS NOT NULL");
+                        .HasFilter("[ClientEventId] IS NOT NULL");
 
                     b.HasIndex("DeviceId", "CreatedUtc");
 
@@ -366,7 +366,7 @@ namespace ScamAlert.Data.Migrations
                     b.HasOne("ScamAlert.Data.Entities.MonitoredDevice", "Device")
                         .WithMany("AlertEvents")
                         .HasForeignKey("DeviceId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Customer");
@@ -407,7 +407,7 @@ namespace ScamAlert.Data.Migrations
                     b.HasOne("ScamAlert.Data.Entities.Contact", "Contact")
                         .WithMany("NotificationAttempts")
                         .HasForeignKey("ContactId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("AlertEvent");

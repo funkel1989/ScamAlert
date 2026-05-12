@@ -157,7 +157,7 @@ namespace ScamAlert.Data.Migrations
                         column: x => x.DeviceId,
                         principalTable: "Devices",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -189,7 +189,7 @@ namespace ScamAlert.Data.Migrations
                         column: x => x.ContactId,
                         principalTable: "Contacts",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateIndex(
@@ -202,7 +202,7 @@ namespace ScamAlert.Data.Migrations
                 table: "AlertEvents",
                 columns: new[] { "DeviceId", "ClientEventId" },
                 unique: true,
-                filter: "\"ClientEventId\" IS NOT NULL");
+                filter: "[ClientEventId] IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_AlertEvents_DeviceId_CreatedUtc",

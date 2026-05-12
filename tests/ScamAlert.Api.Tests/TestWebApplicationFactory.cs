@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using ScamAlert.Api.Services.Alerts;
@@ -10,16 +11,20 @@ namespace ScamAlert.Api.Tests;
 
 public sealed class TestWebApplicationFactory : WebApplicationFactory<Program>
 {
+    private const string MasterConnectionString =
+        "Server=(localdb)\\mssqllocaldb;Database=master;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
+
     public CountingNotificationGateway CountingGateway { get; } = new();
 
-    private readonly string dbPath = Path.Combine(
-        Path.GetTempPath(),
-        $"scamalert-api-test-{Guid.NewGuid():N}.db");
+    private readonly string testDatabaseName = $"ScamAlertApiTests_{Guid.NewGuid():N}";
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        var connectionString =
+            $"Server=(localdb)\\mssqllocaldb;Database={testDatabaseName};Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
+
         builder.UseEnvironment("Testing");
-        builder.UseSetting("ConnectionStrings:ScamAlertDb", $"Data Source={dbPath}");
+        builder.UseSetting("ConnectionStrings:ScamAlertDb", connectionString);
 
         builder.ConfigureTestServices(services =>
         {
@@ -35,22 +40,33 @@ public sealed class TestWebApplicationFactory : WebApplicationFactory<Program>
 
     protected override void Dispose(bool disposing)
     {
+        base.Dispose(disposing);
         if (disposing)
         {
-            try
-            {
-                if (File.Exists(dbPath))
-                {
-                    File.Delete(dbPath);
-                }
-            }
-            catch
-            {
-                // best-effort cleanup of temp SQLite file
-            }
+            TryDropDatabase();
         }
+    }
 
-        base.Dispose(disposing);
+    private void TryDropDatabase()
+    {
+        try
+        {
+            using var conn = new SqlConnection(MasterConnectionString);
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"""
+                IF DB_ID(N'{testDatabaseName.Replace("'", "''", StringComparison.Ordinal)}') IS NOT NULL
+                BEGIN
+                    ALTER DATABASE [{testDatabaseName}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+                    DROP DATABASE [{testDatabaseName}];
+                END
+                """;
+            cmd.ExecuteNonQuery();
+        }
+        catch
+        {
+            // best-effort cleanup; LocalDB may be unavailable
+        }
     }
 }
 

@@ -2,7 +2,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using ScamAlert.Api.HostedServices;
-using ScamAlert.Api;
 using ScamAlert.Api.Services.Alerts;
 using ScamAlert.Api.Services.Audit;
 using ScamAlert.Api.Services.Auth;
@@ -21,15 +20,9 @@ builder.Services.AddOpenApi();
 builder.Services.AddDbContext<ScamAlertDbContext>(options =>
 {
     var connectionString = builder.Configuration.GetConnectionString("ScamAlertDb")
-        ?? "Data Source=scamalert.db";
-    if (DbProviderExtensions.IsSqliteConnectionString(connectionString))
-    {
-        options.UseSqlite(connectionString);
-    }
-    else
-    {
-        options.UseSqlServer(connectionString);
-    }
+        ?? throw new InvalidOperationException(
+            "Connection string 'ScamAlertDb' is not configured. Set ConnectionStrings:ScamAlertDb or run under Aspire.");
+    options.UseSqlServer(connectionString);
 });
 builder.Services.Configure<AlertsOptions>(builder.Configuration.GetSection(AlertsOptions.SectionName));
 builder.Services.AddScamAlertAuthentication(
@@ -65,17 +58,7 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<ScamAlertDbContext>();
-    var connectionString = app.Configuration.GetConnectionString("ScamAlertDb")
-        ?? "Data Source=scamalert.db";
-    if (DbProviderExtensions.IsSqliteConnectionString(connectionString))
-    {
-        // Migrations are authored for SQL Server (Aspire); SQLite uses the current model.
-        dbContext.Database.EnsureCreated();
-    }
-    else
-    {
-        dbContext.Database.Migrate();
-    }
+    dbContext.Database.Migrate();
 }
 
 // Configure the HTTP request pipeline.

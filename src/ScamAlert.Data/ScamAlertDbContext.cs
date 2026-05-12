@@ -60,7 +60,17 @@ public sealed class ScamAlertDbContext(DbContextOptions<ScamAlertDbContext> opti
             entity.HasIndex(x => new { x.DeviceId, x.CreatedUtc });
             entity.HasIndex(x => new { x.DeviceId, x.ClientEventId })
                 .IsUnique()
-                .HasFilter("\"ClientEventId\" IS NOT NULL");
+                .HasFilter("[ClientEventId] IS NOT NULL");
+
+            entity.HasOne(x => x.Customer)
+                .WithMany(x => x.AlertEvents)
+                .HasForeignKey(x => x.CustomerId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(x => x.Device)
+                .WithMany(x => x.AlertEvents)
+                .HasForeignKey(x => x.DeviceId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<NotificationAttempt>(entity =>
@@ -70,8 +80,20 @@ public sealed class ScamAlertDbContext(DbContextOptions<ScamAlertDbContext> opti
             entity.Property(x => x.ProviderMessageId).HasMaxLength(100);
             entity.Property(x => x.AcknowledgmentToken).HasMaxLength(32);
             entity.Property(x => x.Notes).HasMaxLength(500);
-            entity.HasIndex(x => x.AcknowledgmentToken).IsUnique();
+            entity.HasIndex(x => x.AcknowledgmentToken)
+                .IsUnique()
+                .HasFilter("[AcknowledgmentToken] IS NOT NULL");
             entity.HasIndex(x => new { x.AlertEventId, x.AttemptedUtc });
+
+            entity.HasOne(x => x.AlertEvent)
+                .WithMany(x => x.NotificationAttempts)
+                .HasForeignKey(x => x.AlertEventId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(x => x.Contact)
+                .WithMany(x => x.NotificationAttempts)
+                .HasForeignKey(x => x.ContactId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<AuthUserCredential>(entity =>

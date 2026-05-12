@@ -96,7 +96,7 @@ namespace ScamAlert.Data.Migrations
 
                     b.HasIndex("DeviceId", "ClientEventId")
                         .IsUnique()
-                        .HasFilter("\"ClientEventId\" IS NOT NULL");
+                        .HasFilter("[ClientEventId] IS NOT NULL");
 
                     b.HasIndex("DeviceId", "CreatedUtc");
 
@@ -363,7 +363,7 @@ namespace ScamAlert.Data.Migrations
                     b.HasOne("ScamAlert.Data.Entities.MonitoredDevice", "Device")
                         .WithMany("AlertEvents")
                         .HasForeignKey("DeviceId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Customer");
@@ -404,7 +404,7 @@ namespace ScamAlert.Data.Migrations
                     b.HasOne("ScamAlert.Data.Entities.Contact", "Contact")
                         .WithMany("NotificationAttempts")
                         .HasForeignKey("ContactId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("AlertEvent");

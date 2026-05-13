@@ -1,0 +1,103 @@
+@page "/login"
+@attribute [AllowAnonymous]
+@rendermode InteractiveServer
+
+<PageTitle>Log in</PageTitle>
+
+<div class="row justify-content-center">
+    <div class="col-md-6 col-lg-5">
+        <h1 class="h3 mb-3">Log in</h1>
+        <p class="text-secondary small">Industry-standard password hashing (PBKDF2) and optional Microsoft sign-in when configured.</p>
+        @if (!string.IsNullOrEmpty(Error))
+        {
+            <div class="alert alert-danger">@Error</div>
+        }
+        <EditForm Model="Model" OnValidSubmit="SubmitAsync" FormName="login">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+            <div class="mb-3">
+                <label class="form-label">Email</label>
+                <InputText class="form-control" @bind-Value="Model.Email" autocomplete="username" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Password</label>
+                <InputText type="password" class="form-control" @bind-Value="Model.Password" autocomplete="current-password" />
+            </div>
+            <button class="btn btn-primary w-100" type="submit">Log in</button>
+        </EditForm>
+        @if (MicrosoftLoginEnabled)
+        {
+            <div class="text-center my-3 text-muted small">or</div>
+            <a class="btn btn-outline-secondary w-100" href="/external/microsoft?returnUrl=@Uri.EscapeDataString(ReturnUrl ?? "/dashboard")">Sign in with Microsoft</a>
+        }
+    </div>
+</div>
+
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.WebUtilities
+@inject IHttpContextAccessor HttpContextAccessor
+@inject IAuthCredentialService AuthCredentialService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+@inject IConfiguration Configuration
+
+@code {
+    private string? Error { get; set; }
+
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string? ReturnUrl { get; set; }
+
+    private LoginModel Model { get; } = new();
+
+    private bool MicrosoftLoginEnabled =>
+        !string.IsNullOrWhiteSpace(Configuration["Authentication:Microsoft:ClientId"]);
+
+    private async Task SubmitAsync()
+    {
+        Error = null;
+        var http = HttpContextAccessor.HttpContext;
+        if (http is null)
+        {
+            Error = "Unable to access request.";
+            return;
+        }
+
+        var result = await AuthCredentialService.ValidateAsync(Model.Email, Model.Password, CancellationToken.None);
+        if (!result.Success)
+        {
+            Error = result.IsLockedOut ? "Account is temporarily locked. Try again later." : "Invalid email or password.";
+            return;
+        }
+
+        var principal = PortalClaimsPrincipalFactory.Create(
+            result.Username,
+            result.Roles.ToArray(),
+            result.CustomerScope.ToArray());
+
+        await http.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
+        if (AuthenticationStateProvider is HttpContextAuthenticationStateProvider p)
+        {
+            p.NotifyChanged();
+        }
+
+        var dest = string.IsNullOrWhiteSpace(ReturnUrl) ? "/dashboard" : ReturnUrl;
+        if (!Uri.TryCreate(dest, UriKind.Relative, out _))
+        {
+            dest = "/dashboard";
+        }
+
+        Navigation.NavigateTo(dest, forceLoad: true);
+    }
+
+    public sealed class LoginModel
+    {
+        [Required, EmailAddress]
+        public string Email { get; set; } = string.Empty;
+
+        [Required, MinLength(1)]
+        public string Password { get; set; } = string.Empty;
+    }
+}

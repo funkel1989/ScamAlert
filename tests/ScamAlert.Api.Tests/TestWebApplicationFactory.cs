@@ -5,7 +5,9 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using ScamAlert.Api.Services.Alerts;
+using ScamAlert.Api.Services.Billing;
 using ScamAlert.Api.Services.Notifications;
+using ScamAlert.Api.Services.Stripe;
 
 namespace ScamAlert.Api.Tests;
 
@@ -30,6 +32,18 @@ public sealed class TestWebApplicationFactory : WebApplicationFactory<Program>
         {
             services.RemoveAll<INotificationGateway>();
             services.AddSingleton<INotificationGateway>(CountingGateway);
+            services.PostConfigure<StripeOptions>(o =>
+            {
+                o.SkipPaymentForDevelopment = true;
+            });
+            services.PostConfigure<BillingOptions>(o =>
+            {
+                o.Tiers =
+                [
+                    new BillingTierOptions { PlanCode = "pro", StripePriceId = "price_test_placeholder", DisplayName = "Pro" },
+                    new BillingTierOptions { PlanCode = "family", StripePriceId = "price_test_family", DisplayName = "Family" }
+                ];
+            });
             services.PostConfigure<AlertsOptions>(o =>
             {
                 o.EscalationDelaySeconds = 1;

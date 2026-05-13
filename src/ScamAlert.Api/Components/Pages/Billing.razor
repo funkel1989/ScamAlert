@@ -1,0 +1,146 @@
+@page "/billing"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+<PageTitle>Billing</PageTitle>
+
+@if (Loading)
+{
+    <p class="text-secondary">Loading…</p>
+}
+else if (Summary is null)
+{
+    <h1 class="h3 mb-3">Billing</h1>
+    <p class="text-secondary">
+        Self-service billing is available when your login is linked to exactly one organization.
+        Global administrators should use the Stripe Dashboard for customer billing.
+    </p>
+}
+else
+{
+    <h1 class="h3 mb-3">Billing</h1>
+    <p class="small text-secondary mb-4">
+        ScamAlert is offered in the United States. Use US-issued cards and configure recurring prices in USD in Stripe.
+        Market: <strong>@Summary.MarketRegion</strong>
+    </p>
+
+    @if (!string.IsNullOrEmpty(Banner))
+    {
+        <div class="alert alert-warning" role="status">@Banner</div>
+    }
+
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h2 class="h5">Current plan</h2>
+                    <p class="mb-1"><span class="text-muted">Plan</span> <strong>@Summary.PlanCode</strong></p>
+                    <p class="mb-1"><span class="text-muted">Status</span> <strong>@Summary.SubscriptionStatus</strong></p>
+                    <p class="mb-3">
+                        <span class="text-muted">Renews / period end (UTC)</span>
+                        <strong>@(Summary.PeriodEndUtc?.ToString("u") ?? "—")</strong>
+                    </p>
+                    @if (Summary.PortalAvailable)
+                    {
+                        <button type="button" class="btn btn-primary" disabled="@Busy" @onclick="OpenPortalAsync">
+                            Manage payment &amp; invoices
+                        </button>
+                    }
+                    else
+                    {
+                        <p class="small text-secondary mb-0">@Summary.PortalUnavailableReason</p>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h2 class="h5">Change plan</h2>
+                    <p class="small text-secondary">Upgrades or downgrades prorate on your next Stripe invoice (live mode).</p>
+                    <div class="mb-3">
+                        <label class="form-label" for="planSelect">Plan</label>
+                        <select id="planSelect" class="form-select" @bind="SelectedPlanCode" disabled="@Busy">
+                            @foreach (var t in Summary.AvailableTiers)
+                            {
+                                <option value="@t.PlanCode">@t.DisplayName</option>
+                            }
+                        </select>
+                    </div>
+                    <button type="button" class="btn btn-outline-primary" disabled="@Busy" @onclick="ChangePlanAsync">
+                        Update plan
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@inject ICustomerBillingService CustomerBilling
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+
+@code {
+    private bool Loading { get; set; } = true;
+    private bool Busy { get; set; }
+    private string? Banner { get; set; }
+    private BillingSummaryResponse? Summary { get; set; }
+    private string SelectedPlanCode { get; set; } = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        Summary = await CustomerBilling.GetSummaryAsync(state.User, default);
+        if (Summary is not null && Summary.AvailableTiers.Count > 0)
+        {
+            SelectedPlanCode = Summary.PlanCode;
+            if (Summary.AvailableTiers.All(t => !string.Equals(t.PlanCode, SelectedPlanCode, StringComparison.OrdinalIgnoreCase)))
+            {
+                SelectedPlanCode = Summary.AvailableTiers[0].PlanCode;
+            }
+        }
+
+        Loading = false;
+    }
+
+    private async Task OpenPortalAsync()
+    {
+        Busy = true;
+        Banner = null;
+        try
+        {
+            var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var url = await CustomerBilling.CreateCustomerPortalUrlAsync(state.User, default);
+            Navigation.NavigateTo(url, forceLoad: true);
+        }
+        catch (InvalidOperationException ex)
+        {
+            Banner = ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    private async Task ChangePlanAsync()
+    {
+        Busy = true;
+        Banner = null;
+        try
+        {
+            var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            await CustomerBilling.ChangePlanAsync(state.User, SelectedPlanCode, default);
+            Summary = await CustomerBilling.GetSummaryAsync(state.User, default);
+            Banner = "Plan updated.";
+        }
+        catch (InvalidOperationException ex)
+        {
+            Banner = ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+}

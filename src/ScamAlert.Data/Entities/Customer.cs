@@ -5,6 +5,8 @@ public sealed class Customer
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Email { get; set; }
+    /// <summary>Stripe Customer id (<c>cus_</c>) for billing portal and recurring charges.</summary>
+    public string? StripeCustomerId { get; set; }
     public DateTimeOffset CreatedUtc { get; set; }
     public DateTimeOffset UpdatedUtc { get; set; }
 

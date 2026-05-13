@@ -26,13 +26,13 @@ public sealed class AlertWorkflowService(
 
         var now = DateTimeOffset.UtcNow;
         var activeSubscription = device.Customer.Subscriptions.Any(x =>
-            (x.Status == SubscriptionStatus.Active || x.Status == SubscriptionStatus.Trial) &&
+            (x.Status is SubscriptionStatus.Active or SubscriptionStatus.Trial or SubscriptionStatus.PastDue) &&
             x.StartsUtc <= now &&
             (x.EndsUtc is null || x.EndsUtc >= now));
 
         if (!activeSubscription)
         {
-            throw new InvalidOperationException($"Customer '{device.CustomerId}' has no active or trial subscription.");
+            throw new InvalidOperationException($"Customer '{device.CustomerId}' has no active, trial, or past-due subscription.");
         }
 
         if (request.ClientEventId is { } clientEventId)

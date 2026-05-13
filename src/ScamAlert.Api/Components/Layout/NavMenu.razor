@@ -1,0 +1,16 @@
+@using Microsoft.AspNetCore.Components.Authorization
+
+<div class="d-flex flex-wrap gap-2 align-items-center">
+    <a class="btn btn-link" href="/">Home</a>
+    <a class="btn btn-link" href="/signup">Sign up</a>
+    <AuthorizeView>
+        <Authorized>
+            <a class="btn btn-link" href="/billing">Billing</a>
+            <a class="btn btn-primary btn-sm" href="/dashboard">My account</a>
+            <a class="btn btn-outline-secondary btn-sm" href="/logout">Log out</a>
+        </Authorized>
+        <NotAuthorized>
+            <a class="btn btn-outline-primary btn-sm" href="/login">Log in</a>
+        </NotAuthorized>
+    </AuthorizeView>
+</div>

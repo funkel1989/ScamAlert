@@ -1,21 +1,26 @@
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using ScamAlert.Api.Components;
 using ScamAlert.Api.HostedServices;
 using ScamAlert.Api.Services.Alerts;
+using ScamAlert.Api.Services.Billing;
 using ScamAlert.Api.Services.Audit;
 using ScamAlert.Api.Services.Auth;
 using ScamAlert.Api.Services.Notifications;
+using ScamAlert.Api.Services.Signup;
+using ScamAlert.Api.Services.Stripe;
+using ScamAlert.Api.Services.Web;
 using ScamAlert.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 
-// Add services to the container.
-
 builder.Services.AddControllers();
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 builder.Services.AddDbContext<ScamAlertDbContext>(options =>
 {
@@ -24,7 +29,22 @@ builder.Services.AddDbContext<ScamAlertDbContext>(options =>
             "Connection string 'ScamAlertDb' is not configured. Set ConnectionStrings:ScamAlertDb or run under Aspire.");
     options.UseSqlServer(connectionString);
 });
+builder.Services.AddDbContextFactory<ScamAlertDbContext>(options =>
+{
+    var connectionString = builder.Configuration.GetConnectionString("ScamAlertDb")
+        ?? throw new InvalidOperationException(
+            "Connection string 'ScamAlertDb' is not configured. Set ConnectionStrings:ScamAlertDb or run under Aspire.");
+    options.UseSqlServer(connectionString);
+});
 builder.Services.Configure<AlertsOptions>(builder.Configuration.GetSection(AlertsOptions.SectionName));
+builder.Services.Configure<StripeOptions>(builder.Configuration.GetSection(StripeOptions.SectionName));
+builder.Services.Configure<WebSiteOptions>(builder.Configuration.GetSection(WebSiteOptions.SectionName));
+builder.Services.Configure<BillingOptions>(builder.Configuration.GetSection(BillingOptions.SectionName));
+builder.Services.AddSingleton<IBillingTierCatalog, BillingTierCatalog>();
+builder.Services.AddScoped<ISignupService, SignupService>();
+builder.Services.AddScoped<ICustomerBillingService, CustomerBillingService>();
+builder.Services.AddScoped<ISubscriptionPaymentActivator, SubscriptionPaymentActivator>();
+builder.Services.AddScoped<IStripeSubscriptionWebhookProcessor, StripeSubscriptionWebhookProcessor>();
 builder.Services.AddScamAlertAuthentication(
     builder.Configuration,
     useTestingAuth: builder.Environment.IsEnvironment("Testing"));
@@ -36,6 +56,7 @@ if (!builder.Environment.IsEnvironment("Testing"))
 {
     builder.Services.AddHostedService<AlertEscalationWorker>();
 }
+
 builder.Services.Configure<TwilioOptions>(builder.Configuration.GetSection(TwilioOptions.SectionName));
 builder.Services.AddHttpClient<TwilioNotificationGateway>();
 builder.Services.AddScoped<ITwilioRequestValidator, TwilioRequestValidator>();
@@ -53,6 +74,25 @@ builder.Services.AddScoped<INotificationGateway>(provider =>
         : provider.GetRequiredService<LoggingNotificationGateway>();
 });
 
+builder.Services.AddHttpContextAccessor();
+if (!builder.Environment.IsEnvironment("Testing"))
+{
+    builder.Services.AddCascadingAuthenticationState();
+    builder.Services.AddScoped<HttpContextAuthenticationStateProvider>();
+    builder.Services.AddScoped<AuthenticationStateProvider>(sp =>
+        sp.GetRequiredService<HttpContextAuthenticationStateProvider>());
+    builder.Services.AddRazorComponents()
+        .AddInteractiveServerComponents();
+    builder.Services.AddScoped(sp =>
+    {
+        var accessor = sp.GetRequiredService<IHttpContextAccessor>();
+        var http = accessor.HttpContext;
+        return http is null
+            ? new HttpClient()
+            : new HttpClient { BaseAddress = new Uri($"{http.Request.Scheme}://{http.Request.Host}{http.Request.PathBase}") };
+    });
+}
+
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
@@ -61,7 +101,6 @@ using (var scope = app.Services.CreateScope())
     dbContext.Database.Migrate();
 }
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
@@ -70,14 +109,32 @@ if (app.Environment.IsDevelopment())
 if (!app.Environment.IsEnvironment("Testing"))
 {
     app.UseHttpsRedirection();
+    app.UseStaticFiles();
 }
 
 app.UseAuthentication();
 app.UseRateLimiter();
 app.UseAuthorization();
 
+if (!app.Environment.IsEnvironment("Testing"))
+{
+    app.UseAntiforgery();
+}
+
 app.MapDefaultEndpoints();
 app.MapControllers();
+
+if (!app.Environment.IsEnvironment("Testing"))
+{
+    app.MapStaticAssets();
+    app.MapRazorComponents<App>()
+        .AddInteractiveServerRenderMode();
+    app.MapGet("/logout", async (HttpContext ctx) =>
+    {
+        await ctx.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        return Results.Redirect("/");
+    }).AllowAnonymous();
+}
 
 app.Run();
 

@@ -7,6 +7,13 @@ public sealed class AuthOptions
     public JwtAuthOptions Jwt { get; set; } = new();
     public LockoutOptions Lockout { get; set; } = new();
     public BootstrapAdminOptions BootstrapAdmin { get; set; } = new();
+    public MicrosoftLoginOptions Microsoft { get; set; } = new();
+}
+
+public sealed class MicrosoftLoginOptions
+{
+    public string ClientId { get; set; } = string.Empty;
+    public string ClientSecret { get; set; } = string.Empty;
 }
 
 public sealed class JwtAuthOptions

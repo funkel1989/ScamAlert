@@ -1,0 +1,158 @@
+@page "/signup"
+@attribute [AllowAnonymous]
+@rendermode InteractiveServer
+
+<PageTitle>Sign up</PageTitle>
+
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <h1 class="h3 mb-2">Create your account</h1>
+        <p class="text-secondary mb-4">Secure checkout with Stripe. You will add trusted contacts who get SMS if something looks wrong.</p>
+        @if (!string.IsNullOrEmpty(Message))
+        {
+            <div class="alert @(IsError ? "alert-danger" : "alert-info")">@Message</div>
+        }
+        <EditForm Model="Model" OnValidSubmit="SubmitAsync" FormName="signup">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Your name</label>
+                    <InputText class="form-control" @bind-Value="Model.Name" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Email (also your login)</label>
+                    <InputText class="form-control" @bind-Value="Model.Email" autocomplete="email" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Password</label>
+                    <InputText type="password" class="form-control" @bind-Value="Model.Password" autocomplete="new-password" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Plan code</label>
+                    <InputText class="form-control" @bind-Value="Model.PlanCode" />
+                </div>
+                <div class="col-12"><hr /></div>
+                <div class="col-md-6">
+                    <label class="form-label">Primary contact name</label>
+                    <InputText class="form-control" @bind-Value="Model.PrimaryContactName" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Primary mobile (E.164, e.g. +15555550100)</label>
+                    <InputText class="form-control" @bind-Value="Model.PrimaryPhone" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Secondary contact (optional)</label>
+                    <InputText class="form-control" @bind-Value="Model.SecondaryContactName" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Secondary mobile (optional)</label>
+                    <InputText class="form-control" @bind-Value="Model.SecondaryPhone" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">PC / device display name</label>
+                    <InputText class="form-control" @bind-Value="Model.DeviceName" />
+                </div>
+            </div>
+            <button class="btn btn-primary mt-4" type="submit" disabled="@Busy">Continue to payment</button>
+        </EditForm>
+    </div>
+</div>
+
+@using System.ComponentModel.DataAnnotations
+@using System.Text.Json
+@inject HttpClient Http
+@inject NavigationManager NavigationManager
+
+@code {
+    private bool Busy { get; set; }
+    private string? Message { get; set; }
+    private bool IsError { get; set; }
+
+    private SignupFormModel Model { get; } = new();
+
+    private async Task SubmitAsync()
+    {
+        Busy = true;
+        Message = null;
+        IsError = false;
+        try
+        {
+            var contacts = new List<CreateContactRequest>
+            {
+                new(Model.PrimaryContactName.Trim(), Model.PrimaryPhone.Trim(), 1)
+            };
+            if (!string.IsNullOrWhiteSpace(Model.SecondaryPhone) && !string.IsNullOrWhiteSpace(Model.SecondaryContactName))
+            {
+                contacts.Add(new CreateContactRequest(
+                    Model.SecondaryContactName.Trim(),
+                    Model.SecondaryPhone.Trim(),
+                    2));
+            }
+
+            var deviceId = $"device-{Guid.NewGuid():N}";
+            var devices = new List<CreateDeviceRequest>
+            {
+                new(Model.DeviceName.Trim(), deviceId)
+            };
+
+            var payload = new SelfServeSignupRequest(
+                Model.Name.Trim(),
+                Model.Email.Trim(),
+                Model.Password,
+                Model.PlanCode.Trim(),
+                contacts,
+                devices);
+
+            var response = await Http.PostAsJsonAsync("/api/signup", payload);
+            if (!response.IsSuccessStatusCode)
+            {
+                IsError = true;
+                var text = await response.Content.ReadAsStringAsync();
+                Message = text;
+                return;
+            }
+
+            var doc = await response.Content.ReadFromJsonAsync<JsonElement>();
+            var url = doc.GetProperty("checkoutUrl").GetString();
+            if (!string.IsNullOrWhiteSpace(url))
+            {
+                NavigationManager.NavigateTo(url, forceLoad: true);
+            }
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    public sealed class SignupFormModel
+    {
+        [Required, MaxLength(200)]
+        public string Name { get; set; } = string.Empty;
+
+        [Required, EmailAddress]
+        public string Email { get; set; } = string.Empty;
+
+        [Required, MinLength(8)]
+        public string Password { get; set; } = string.Empty;
+
+        [Required, MaxLength(100)]
+        public string PlanCode { get; set; } = "pro";
+
+        [Required, MaxLength(200)]
+        public string PrimaryContactName { get; set; } = string.Empty;
+
+        [Required, MaxLength(32)]
+        public string PrimaryPhone { get; set; } = string.Empty;
+
+        [MaxLength(200)]
+        public string? SecondaryContactName { get; set; }
+
+        [MaxLength(32)]
+        public string? SecondaryPhone { get; set; }
+
+        [Required, MaxLength(200)]
+        public string DeviceName { get; set; } = "Family PC";
+    }
+}

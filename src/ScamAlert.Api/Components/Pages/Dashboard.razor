@@ -1,0 +1,77 @@
+@page "/dashboard"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+<PageTitle>My account</PageTitle>
+
+@if (Loading)
+{
+    <p class="text-secondary">Loading…</p>
+}
+else if (Customer is null)
+{
+    <p class="text-danger">Could not load your account.</p>
+}
+else
+{
+    <h1 class="h3 mb-4">Welcome, @Customer.Name</h1>
+    <div class="row g-4">
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h2 class="h5">Trusted contacts</h2>
+                    <p class="small text-secondary">These people get SMS when we see suspicious remote access.</p>
+                    <ul class="list-group list-group-flush">
+                        @foreach (var c in Customer.Contacts.OrderBy(x => x.EscalationOrder))
+                        {
+                            <li class="list-group-item d-flex justify-content-between">
+                                <span>@c.FullName</span>
+                                <span class="text-muted small">#@c.EscalationOrder</span>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h2 class="h5">Installer</h2>
+                    <p class="text-secondary small">Install on the Windows PC you want to watch. Configure the broker with the device key shown when your account was created (check your email or signup confirmation).</p>
+                    <a class="btn btn-primary" href="@InstallerUrl" target="_blank" rel="noopener">Download installer</a>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@inject IDbContextFactory<ScamAlertDbContext> DbContextFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IOptions<WebSiteOptions> WebOptions
+
+@code {
+    private bool Loading { get; set; } = true;
+    private CustomerVm? Customer { get; set; }
+    private string InstallerUrl => WebOptions.Value.InstallerDownloadUrl;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var idText = state.User.FindFirst(AuthClaimTypes.CustomerId)?.Value;
+        if (!Guid.TryParse(idText, out var customerId))
+        {
+            Loading = false;
+            return;
+        }
+
+        await using var db = await DbContextFactory.CreateDbContextAsync();
+        Customer = await db.Customers.AsNoTracking()
+            .Where(x => x.Id == customerId)
+            .Select(x => new CustomerVm(x.Name, x.Contacts.Select(c => new ContactVm(c.FullName, c.EscalationOrder)).ToList()))
+            .SingleOrDefaultAsync();
+        Loading = false;
+    }
+
+    private sealed record ContactVm(string FullName, int EscalationOrder);
+    private sealed record CustomerVm(string Name, List<ContactVm> Contacts);
+}

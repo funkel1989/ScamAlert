@@ -1,7 +1,9 @@
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authentication.MicrosoftAccount;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Options;
@@ -32,7 +34,24 @@ public static class AuthServiceCollectionExtensions
                 options.AddPolicy(AuthPolicies.CustomerScope, policy => policy.Requirements.Add(new CustomerScopeRequirement()));
             });
             services.AddSingleton<IAuthorizationHandler, CustomerScopeAuthorizationHandler>();
-            services.AddRateLimiter(_ => { });
+            services.AddRateLimiter(rateLimiterOptions =>
+            {
+                rateLimiterOptions.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+                rateLimiterOptions.AddPolicy("signup", context =>
+                {
+                    var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+                    return RateLimitPartition.GetFixedWindowLimiter(
+                        partitionKey: ip,
+                        factory: _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 100,
+                            Window = TimeSpan.FromMinutes(1),
+                            QueueLimit = 0,
+                            AutoReplenishment = true
+                        });
+                });
+                AddBillingRateLimitPolicies(rateLimiterOptions);
+            });
             return services;
         }
 
@@ -50,8 +69,34 @@ public static class AuthServiceCollectionExtensions
         if (provider is null || provider.Equals("JwtBearer", StringComparison.OrdinalIgnoreCase))
         {
             var jwt = authOptions.Jwt;
-            services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-                .AddJwtBearer(options =>
+            var authBuilder = services.AddAuthentication(options =>
+                {
+                    options.DefaultScheme = AuthSchemes.PathForwarding;
+                    options.DefaultChallengeScheme = AuthSchemes.PathForwarding;
+                })
+                .AddPolicyScheme(AuthSchemes.PathForwarding, AuthSchemes.PathForwarding, policy =>
+                {
+                    policy.ForwardDefaultSelector = ctx =>
+                    {
+                        var authHeader = ctx.Request.Headers.Authorization.ToString();
+                        if (ctx.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase)
+                            && !string.IsNullOrEmpty(authHeader)
+                            && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return JwtBearerDefaults.AuthenticationScheme;
+                        }
+
+                        return CookieAuthenticationDefaults.AuthenticationScheme;
+                    };
+                })
+                .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme, cookie =>
+                {
+                    cookie.LoginPath = "/login";
+                    cookie.Cookie.Name = "ScamAlert.Portal";
+                    cookie.Cookie.HttpOnly = true;
+                    cookie.Cookie.SameSite = SameSiteMode.Lax;
+                })
+                .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>
                 {
                     options.RequireHttpsMetadata = jwt.RequireHttpsMetadata;
                     options.SaveToken = false;
@@ -67,6 +112,19 @@ public static class AuthServiceCollectionExtensions
                         ClockSkew = TimeSpan.FromSeconds(30)
                     };
                 });
+
+            var ms = authOptions.Microsoft;
+            if (!string.IsNullOrWhiteSpace(ms.ClientId) && !string.IsNullOrWhiteSpace(ms.ClientSecret))
+            {
+                authBuilder.AddMicrosoftAccount(MicrosoftAccountDefaults.AuthenticationScheme, microsoft =>
+                {
+                    microsoft.ClientId = ms.ClientId;
+                    microsoft.ClientSecret = ms.ClientSecret;
+                    microsoft.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+                    microsoft.SaveTokens = false;
+                    MicrosoftAccountTicketSync.Attach(microsoft);
+                });
+            }
         }
         else
         {
@@ -96,8 +154,60 @@ public static class AuthServiceCollectionExtensions
                         AutoReplenishment = true
                     });
             });
+            rateLimiterOptions.AddPolicy("signup", context =>
+            {
+                var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+                return RateLimitPartition.GetFixedWindowLimiter(
+                    partitionKey: ip,
+                    factory: _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 5,
+                        Window = TimeSpan.FromMinutes(10),
+                        QueueLimit = 0,
+                        AutoReplenishment = true
+                    });
+            });
+            AddBillingRateLimitPolicies(rateLimiterOptions);
         });
         return services;
+    }
+
+    private static void AddBillingRateLimitPolicies(RateLimiterOptions rateLimiterOptions)
+    {
+        static string UserOrIpPartition(HttpContext context)
+        {
+            var sub = context.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                ?? context.User?.FindFirst("sub")?.Value
+                ?? context.User?.Identity?.Name;
+            if (!string.IsNullOrEmpty(sub))
+            {
+                return $"user:{sub}";
+            }
+
+            return $"ip:{context.Connection.RemoteIpAddress?.ToString() ?? "unknown"}";
+        }
+
+        rateLimiterOptions.AddPolicy("billing-summary", context =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                UserOrIpPartition(context),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 120,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true
+                }));
+
+        rateLimiterOptions.AddPolicy("billing-mutate", context =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                UserOrIpPartition(context),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 8,
+                    Window = TimeSpan.FromMinutes(10),
+                    QueueLimit = 0,
+                    AutoReplenishment = true
+                }));
     }
 
     private static void ValidateJwtOptions(JwtAuthOptions jwt)

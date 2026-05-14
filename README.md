@@ -17,13 +17,43 @@ This branch also includes the native Windows Filtering Platform (WFP) monitor an
 - [ ] Twilio voice-call workflow and richer retry policy.
 - [ ] Signed/packaged production WFP monitor installer.
 
+## Marketing and signup (what exists vs. what is missing)
+
+The landing and self-serve signup UI live in **`ScamAlert.Api`** as Blazor Server pages (not a separate web project): **`/`** (home), **`/signup`**, **`/signup/success`**, under `src/ScamAlert.Api/Components/Pages/`. They use the same host and port as the API.
+
+The items below are **not done yet** but are useful to track for a production-ready funnel:
+
+### Product and UX
+
+- **Plan selection**: replace the free-text plan code field with a clear plan or pricing chooser wired to billing tiers (names, prices, short feature list).
+- **Post-checkout experience**: stronger success state (what happens next), optional **email verification** if you add it, and an obvious **installer download** path after payment (today users are pointed toward signing in first).
+- **Trust and compliance**: **Privacy policy**, **Terms of service**, and **cookie** notices linked from the footer and/or checkout-adjacent flows.
+- **Support**: **Help**, **Contact**, or support email link for users stuck at signup or Stripe.
+
+### Marketing content
+
+- **Beyond one hero block**: dedicated sections or pages for **pricing**, **FAQ**, **how it works** (steps), product **screenshots** or diagrams, and **social proof** (testimonials, quotes, or logos) if you want a fuller commercial site.
+
+### SEO and sharing
+
+- **Meta and social previews**: per-route **meta description**, Open Graph / Twitter cards, and **canonical URLs** for `/` and `/signup` (today the shell title is generic).
+
+### Visual design and brand
+
+- **Distinct visual identity**: today the UI is mostly **Bootstrap defaults** plus minimal custom CSS (`wwwroot/app.css`); a custom palette, typography, and layout polish would differentiate the brand from “stock Bootstrap.”
+
+### Architecture and local development
+
+- **Separate marketing site**: if you need a different deployable or domain only for marketing, that would be a **new project**; today marketing and API are intentionally combined in `ScamAlert.Api`.
+- **Aspire orchestration**: the AppHost starts **API + SQL Server** only; **Broker** and **Tray** are still started separately for an end-to-end desktop + cloud demo (see [Launch With Visual Studio](#launch-with-visual-studio) and [Launch The Simulator Path](#launch-the-simulator-path)).
+
 ## Projects
 
 - `src/ScamAlert.Broker` - background broker that receives driver events, applies local policy, talks to the tray UI, and writes local signals.
 - `src/ScamAlert.Broker.Client` - reusable named-pipe client used by the simulator and DriverBridge.
 - `src/ScamAlert.Tray` - Windows tray app and decision prompt UI.
 - `src/ScamAlert.DriverBridge` - user-mode worker that reads events from `\\.\ScamAlertWfp`, asks the broker for a decision, and completes the kernel event.
-- `src/ScamAlert.Api` - ASP.NET Core API host for controller-based endpoints.
+- `src/ScamAlert.Api` - ASP.NET Core host for REST APIs and Blazor Server UI (landing, signup, account pages).
 - `src/ScamAlert.AppHost` - .NET Aspire orchestrator (runs API + dashboard for local dev).
 - `src/ScamAlert.ServiceDefaults` - shared Aspire service defaults (OpenTelemetry, health, resilience) referenced by the API.
 - `src/ScamAlert.Data` - EF Core data layer (SQL Server) for customers, subscriptions, contacts, devices, alerts, and notification attempts.

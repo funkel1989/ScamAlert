@@ -7,6 +7,8 @@ obj/
 TestResults/
 coverage/
 artifacts/
+infra/main.parameters.*.local.json
+infra/*.parameters.local.json
 data/*.jsonl
 data/*.json
 logs/

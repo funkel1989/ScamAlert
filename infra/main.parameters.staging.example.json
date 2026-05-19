@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "staging"
+    },
+    "location": {
+      "value": "eastus2"
+    },
+    "namePrefix": {
+      "value": "scamalert"
+    },
+    "sqlAdminLogin": {
+      "value": "scamalertadmin"
+    },
+    "sqlAdminPassword": {
+      "value": "SET_A_STRONG_PASSWORD_VIA_CLI_OR_LOCAL_FILE"
+    },
+    "appServicePlanSku": {
+      "value": "B1"
+    },
+    "customDomainHost": {
+      "value": ""
+    }
+  }
+}

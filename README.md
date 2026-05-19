@@ -74,6 +74,16 @@ The items below are **not done yet** but are useful to track for a production-re
 - Visual Studio 2022, optional but useful for running broker and tray together
 - Optional for native driver work: Visual Studio C++ tooling, Windows Driver Kit, Hyper-V, and a Windows test-signing VM. Do not enable test-signing on your daily workstation.
 
+## Azure deployment (Phase 1)
+
+Staging infrastructure and CI/CD are documented in **[infra/README.md](infra/README.md)**. Go-live phases and locked MVP decisions are in **[docs/go-live-plan.md](docs/go-live-plan.md)**.
+
+Quick smoke test after deploy:
+
+```powershell
+curl "https://<your-app>.azurewebsites.net/api/health"
+```
+
 ## Build And Test
 
 From the repo root:

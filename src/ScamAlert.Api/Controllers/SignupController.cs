@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
 using ScamAlert.Api.Contracts;
+using ScamAlert.Api.Services.Billing;
 using ScamAlert.Api.Services.Signup;
 
 namespace ScamAlert.Api.Controllers;
@@ -11,6 +13,16 @@ namespace ScamAlert.Api.Controllers;
 [AllowAnonymous]
 public sealed class SignupController(ISignupService signupService) : ControllerBase
 {
+    [HttpGet("plans")]
+    public IActionResult Plans([FromServices] IOptions<BillingOptions> billing)
+    {
+        var plans = billing.Value.Tiers
+            .Where(t => !string.IsNullOrWhiteSpace(t.PlanCode))
+            .Select(t => new SignupPlanResponse(t.PlanCode, string.IsNullOrWhiteSpace(t.DisplayName) ? t.PlanCode : t.DisplayName))
+            .ToList();
+        return Ok(plans);
+    }
+
     [HttpPost]
     [EnableRateLimiting("signup")]
     public async Task<IActionResult> Register(SelfServeSignupRequest request, CancellationToken cancellationToken)
@@ -18,7 +30,12 @@ public sealed class SignupController(ISignupService signupService) : ControllerB
         try
         {
             var result = await signupService.RegisterAndStartCheckoutAsync(request, cancellationToken);
-            return Ok(new { result.CustomerId, checkoutUrl = result.CheckoutUrl });
+            return Ok(new
+            {
+                result.CustomerId,
+                checkoutUrl = result.CheckoutUrl,
+                provisionedDevices = result.ProvisionedDevices
+            });
         }
         catch (ArgumentException ex)
         {

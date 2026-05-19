@@ -33,16 +33,29 @@ public static class AuthServiceCollectionExtensions
                 options.AddPolicy(AuthPolicies.AdminOnly, policy => policy.RequireRole("admin"));
                 options.AddPolicy(AuthPolicies.CustomerScope, policy => policy.Requirements.Add(new CustomerScopeRequirement()));
             });
-            services.AddSingleton<IAuthorizationHandler, CustomerScopeAuthorizationHandler>();
+            services.AddScoped<IAuthorizationHandler, CustomerScopeAuthorizationHandler>();
             services.AddRateLimiter(rateLimiterOptions =>
             {
                 rateLimiterOptions.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+                rateLimiterOptions.AddPolicy("auth-token", context =>
+                {
+                    var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+                    return RateLimitPartition.GetFixedWindowLimiter(
+                        partitionKey: ip,
+                        factory: _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 100,
+                            Window = TimeSpan.FromMinutes(1),
+                            QueueLimit = 0,
+                            AutoReplenishment = true
+                        });
+                });
                 rateLimiterOptions.AddPolicy("signup", context =>
                 {
                     var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
                     return RateLimitPartition.GetFixedWindowLimiter(
                         partitionKey: ip,
-                        factory: _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+                        factory: _ => new FixedWindowRateLimiterOptions
                         {
                             PermitLimit = 100,
                             Window = TimeSpan.FromMinutes(1),
@@ -137,7 +150,7 @@ public static class AuthServiceCollectionExtensions
             options.AddPolicy(AuthPolicies.AdminOnly, policy => policy.RequireRole("admin"));
             options.AddPolicy(AuthPolicies.CustomerScope, policy => policy.Requirements.Add(new CustomerScopeRequirement()));
         });
-        services.AddSingleton<IAuthorizationHandler, CustomerScopeAuthorizationHandler>();
+        services.AddScoped<IAuthorizationHandler, CustomerScopeAuthorizationHandler>();
         services.AddRateLimiter(rateLimiterOptions =>
         {
             rateLimiterOptions.RejectionStatusCode = StatusCodes.Status429TooManyRequests;

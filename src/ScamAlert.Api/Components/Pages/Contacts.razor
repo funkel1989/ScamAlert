@@ -1,0 +1,213 @@
+@page "/contacts"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@inherits PortalPageBase
+
+<PageTitle>Trusted contacts</PageTitle>
+
+<h1 class="h3 mb-4">Trusted contacts</h1>
+
+@if (!PortalReady)
+{
+    <p class="text-secondary">Loading…</p>
+}
+else if (PortalScopeError is not null)
+{
+    <p class="text-danger">@PortalScopeError</p>
+}
+else
+{
+    @if (!string.IsNullOrEmpty(Banner))
+    {
+        <div class="alert alert-info">@Banner</div>
+    }
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h2 class="h5">@(EditingId is null ? "Add contact" : "Edit contact")</h2>
+            <div class="row g-2">
+                <div class="col-md-4">
+                    <label class="form-label">Name</label>
+                    <input class="form-control" @bind="FormName" disabled="@Busy" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Mobile (E.164)</label>
+                    <input class="form-control" @bind="FormPhone" disabled="@Busy" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Order</label>
+                    <input type="number" class="form-control" min="1" max="99" @bind="FormOrder" disabled="@Busy" />
+                </div>
+                @if (EditingId is not null)
+                {
+                    <div class="col-md-2 d-flex align-items-end">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="FormActive" disabled="@Busy" id="contactActive" />
+                            <label class="form-check-label" for="contactActive">Active</label>
+                        </div>
+                    </div>
+                }
+                <div class="col-md-12">
+                    <button type="button" class="btn btn-primary me-2" disabled="@Busy" @onclick="SaveAsync">
+                        @(EditingId is null ? "Add" : "Save")
+                    </button>
+                    @if (EditingId is not null)
+                    {
+                        <button type="button" class="btn btn-outline-secondary" disabled="@Busy" @onclick="CancelEdit">Cancel</button>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-sm">
+            <thead>
+                <tr>
+                    <th>Order</th>
+                    <th>Name</th>
+                    <th>Phone</th>
+                    <th>Active</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var c in ContactList)
+                {
+                    <tr>
+                        <td>@c.EscalationOrder</td>
+                        <td>@c.FullName</td>
+                        <td>@c.PhoneNumber</td>
+                        <td>@(c.IsActive ? "Yes" : "No")</td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-link" @onclick="() => BeginEdit(c)">Edit</button>
+                            <button type="button" class="btn btn-sm btn-link text-danger" @onclick="() => DeleteAsync(c.Id)">Delete</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@using ScamAlert.Api.Contracts
+@using ScamAlert.Api.Services.Portal
+@inject IPortalContactService ContactService
+
+@code {
+    private List<PortalContactResponse> ContactList { get; } = [];
+    private Guid? EditingId { get; set; }
+    private string FormName { get; set; } = "";
+    private string FormPhone { get; set; } = "";
+    private int FormOrder { get; set; } = 1;
+    private bool FormActive { get; set; } = true;
+    private string? Banner { get; set; }
+    private bool Busy { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        if (CustomerId is not null)
+        {
+            await ReloadAsync();
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        ContactList.Clear();
+        ContactList.AddRange(await ContactService.ListAsync(CustomerId!.Value, default));
+        if (ContactList.Count > 0 && EditingId is null)
+        {
+            FormOrder = ContactList.Max(x => x.EscalationOrder) + 1;
+        }
+    }
+
+    private void BeginEdit(PortalContactResponse c)
+    {
+        EditingId = c.Id;
+        FormName = c.FullName;
+        FormPhone = c.PhoneNumber;
+        FormOrder = c.EscalationOrder;
+        FormActive = c.IsActive;
+    }
+
+    private void CancelEdit()
+    {
+        EditingId = null;
+        FormName = "";
+        FormPhone = "";
+        FormOrder = ContactList.Count == 0 ? 1 : ContactList.Max(x => x.EscalationOrder) + 1;
+        FormActive = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        Busy = true;
+        Banner = null;
+        try
+        {
+            if (EditingId is null)
+            {
+                await ContactService.CreateAsync(
+                    CustomerId!.Value,
+                    new CreatePortalContactRequest(FormName, FormPhone, FormOrder),
+                    default);
+                Banner = "Contact added.";
+                FormName = "";
+                FormPhone = "";
+            }
+            else
+            {
+                await ContactService.UpdateAsync(
+                    CustomerId!.Value,
+                    EditingId.Value,
+                    new UpdatePortalContactRequest(FormName, FormPhone, FormOrder, FormActive),
+                    default);
+                Banner = "Contact updated.";
+                CancelEdit();
+            }
+
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            Banner = ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    private async Task DeleteAsync(Guid id)
+    {
+        Busy = true;
+        Banner = null;
+        try
+        {
+            if (!await ContactService.DeleteAsync(CustomerId!.Value, id, default))
+            {
+                Banner = "Contact not found.";
+            }
+            else
+            {
+                Banner = "Contact removed.";
+                if (EditingId == id)
+                {
+                    CancelEdit();
+                }
+            }
+
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            Banner = ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+}

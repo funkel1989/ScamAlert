@@ -11,6 +11,8 @@ using ScamAlert.Api.Services.Billing;
 using ScamAlert.Api.Services.Audit;
 using ScamAlert.Api.Services.Auth;
 using ScamAlert.Api.Services.Notifications;
+using ScamAlert.Api.Services.Email;
+using ScamAlert.Api.Services.Portal;
 using ScamAlert.Api.Services.Signup;
 using ScamAlert.Api.Services.Stripe;
 using ScamAlert.Api.Services.Web;
@@ -42,6 +44,22 @@ builder.Services.Configure<WebSiteOptions>(builder.Configuration.GetSection(WebS
 builder.Services.Configure<BillingOptions>(builder.Configuration.GetSection(BillingOptions.SectionName));
 builder.Services.AddSingleton<IBillingTierCatalog, BillingTierCatalog>();
 builder.Services.AddScoped<ISignupService, SignupService>();
+builder.Services.AddScoped<ICustomerPortalContext, CustomerPortalContext>();
+builder.Services.AddScoped<IPortalDeviceService, PortalDeviceService>();
+builder.Services.AddScoped<IPortalContactService, PortalContactService>();
+builder.Services.AddScoped<IPasswordResetService, PasswordResetService>();
+builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.SectionName));
+builder.Services.AddHttpClient(nameof(SendGridEmailSender));
+builder.Services.AddScoped<LoggingEmailSender>();
+builder.Services.AddScoped<SendGridEmailSender>();
+builder.Services.AddScoped<IEmailSender>(provider =>
+{
+    var email = provider.GetRequiredService<IOptions<EmailOptions>>().Value;
+    return string.IsNullOrWhiteSpace(email.SendGridApiKey)
+        ? provider.GetRequiredService<LoggingEmailSender>()
+        : provider.GetRequiredService<SendGridEmailSender>();
+});
+builder.Services.AddScoped<ProvisionedDevicesSession>();
 builder.Services.AddScoped<ICustomerBillingService, CustomerBillingService>();
 builder.Services.AddScoped<ISubscriptionPaymentActivator, SubscriptionPaymentActivator>();
 builder.Services.AddScoped<IStripeSubscriptionWebhookProcessor, StripeSubscriptionWebhookProcessor>();

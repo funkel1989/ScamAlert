@@ -7,7 +7,7 @@
 <div class="row justify-content-center">
     <div class="col-lg-8">
         <h1 class="h3 mb-2">Create your account</h1>
-        <p class="text-secondary mb-4">Secure checkout with Stripe. You will add trusted contacts who get SMS if something looks wrong.</p>
+        <p class="text-secondary mb-4">Secure checkout with Stripe. Trusted contacts receive SMS when suspicious remote access is detected.</p>
         @if (!string.IsNullOrEmpty(Message))
         {
             <div class="alert @(IsError ? "alert-danger" : "alert-info")">@Message</div>
@@ -29,8 +29,13 @@
                     <InputText type="password" class="form-control" @bind-Value="Model.Password" autocomplete="new-password" />
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label">Plan code</label>
-                    <InputText class="form-control" @bind-Value="Model.PlanCode" />
+                    <label class="form-label">Plan</label>
+                    <InputSelect class="form-select" @bind-Value="Model.PlanCode">
+                        @foreach (var plan in Plans)
+                        {
+                            <option value="@plan.PlanCode">@plan.DisplayName</option>
+                        }
+                    </InputSelect>
                 </div>
                 <div class="col-12"><hr /></div>
                 <div class="col-md-6">
@@ -60,16 +65,39 @@
 </div>
 
 @using System.ComponentModel.DataAnnotations
+@using System.Net.Http.Json
 @using System.Text.Json
+@using ScamAlert.Api.Contracts
+@using ScamAlert.Api.Services.Web
 @inject HttpClient Http
 @inject NavigationManager NavigationManager
+@inject ProvisionedDevicesSession ProvisionedDevicesSession
 
 @code {
     private bool Busy { get; set; }
     private string? Message { get; set; }
     private bool IsError { get; set; }
+    private List<SignupPlanResponse> Plans { get; } = [];
 
     private SignupFormModel Model { get; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var plans = await Http.GetFromJsonAsync<List<SignupPlanResponse>>("/api/signup/plans");
+            if (plans is { Count: > 0 })
+            {
+                Plans.AddRange(plans);
+                Model.PlanCode = Plans[0].PlanCode;
+            }
+        }
+        catch
+        {
+            Plans.Add(new SignupPlanResponse("pro", "Pro"));
+            Plans.Add(new SignupPlanResponse("family", "Family"));
+        }
+    }
 
     private async Task SubmitAsync()
     {
@@ -108,12 +136,22 @@
             if (!response.IsSuccessStatusCode)
             {
                 IsError = true;
-                var text = await response.Content.ReadAsStringAsync();
-                Message = text;
+                Message = await response.Content.ReadAsStringAsync();
                 return;
             }
 
             var doc = await response.Content.ReadFromJsonAsync<JsonElement>();
+            if (doc.TryGetProperty("provisionedDevices", out var devicesElement))
+            {
+                var provisioned = JsonSerializer.Deserialize<List<ProvisionedDeviceResponse>>(
+                    devicesElement.GetRawText(),
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (provisioned is { Count: > 0 })
+                {
+                    await ProvisionedDevicesSession.SaveAsync(provisioned);
+                }
+            }
+
             var url = doc.GetProperty("checkoutUrl").GetString();
             if (!string.IsNullOrWhiteSpace(url))
             {

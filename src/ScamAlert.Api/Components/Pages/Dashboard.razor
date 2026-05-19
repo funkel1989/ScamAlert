@@ -15,36 +15,50 @@ else if (Customer is null)
 else
 {
     <h1 class="h3 mb-4">Welcome, @Customer.Name</h1>
-    <div class="row g-4">
-        <div class="col-md-6">
+    <div class="row g-4 mb-4">
+        <div class="col-md-4">
             <div class="card shadow-sm h-100">
                 <div class="card-body">
                     <h2 class="h5">Trusted contacts</h2>
-                    <p class="small text-secondary">These people get SMS when we see suspicious remote access.</p>
-                    <ul class="list-group list-group-flush">
-                        @foreach (var c in Customer.Contacts.OrderBy(x => x.EscalationOrder))
-                        {
-                            <li class="list-group-item d-flex justify-content-between">
-                                <span>@c.FullName</span>
-                                <span class="text-muted small">#@c.EscalationOrder</span>
-                            </li>
-                        }
-                    </ul>
+                    <p class="small text-secondary">@Customer.ContactCount on file</p>
+                    <a class="btn btn-sm btn-outline-primary" href="/contacts">Manage contacts</a>
                 </div>
             </div>
         </div>
-        <div class="col-md-6">
+        <div class="col-md-4">
             <div class="card shadow-sm h-100">
                 <div class="card-body">
-                    <h2 class="h5">Installer</h2>
-                    <p class="text-secondary small">Install on the Windows PC you want to watch. Configure the broker with the device key shown when your account was created (check your email or signup confirmation).</p>
-                    <a class="btn btn-primary" href="@InstallerUrl" target="_blank" rel="noopener">Download installer</a>
+                    <h2 class="h5">Protected PCs</h2>
+                    <p class="small text-secondary">@Customer.DeviceCount registered</p>
+                    <a class="btn btn-sm btn-outline-primary" href="/devices">Manage devices</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h2 class="h5">Alerts</h2>
+                    <p class="small text-secondary">Review suspicious access attempts</p>
+                    <a class="btn btn-sm btn-outline-primary" href="/alerts">View alerts</a>
                 </div>
             </div>
         </div>
     </div>
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <h2 class="h5">Subscription</h2>
+            <p class="mb-2"><span class="text-muted">Plan</span> <strong>@Customer.PlanCode</strong></p>
+            <p class="mb-3"><span class="text-muted">Status</span> <strong>@Customer.SubscriptionStatus</strong></p>
+            <a class="btn btn-primary me-2" href="/billing">Billing</a>
+            <a class="btn btn-outline-secondary" href="@InstallerUrl" target="_blank" rel="noopener">Installer download</a>
+        </div>
+    </div>
 }
 
+@using Microsoft.EntityFrameworkCore
+@using ScamAlert.Api.Services.Auth
+@using ScamAlert.Api.Services.Web
+@using ScamAlert.Data
 @inject IDbContextFactory<ScamAlertDbContext> DbContextFactory
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IOptions<WebSiteOptions> WebOptions
@@ -67,11 +81,20 @@ else
         await using var db = await DbContextFactory.CreateDbContextAsync();
         Customer = await db.Customers.AsNoTracking()
             .Where(x => x.Id == customerId)
-            .Select(x => new CustomerVm(x.Name, x.Contacts.Select(c => new ContactVm(c.FullName, c.EscalationOrder)).ToList()))
+            .Select(x => new CustomerVm(
+                x.Name,
+                x.Contacts.Count,
+                x.Devices.Count(c => c.IsActive),
+                x.Subscriptions.OrderByDescending(s => s.StartsUtc).Select(s => s.PlanCode).FirstOrDefault() ?? "—",
+                x.Subscriptions.OrderByDescending(s => s.StartsUtc).Select(s => s.Status.ToString()).FirstOrDefault() ?? "—"))
             .SingleOrDefaultAsync();
         Loading = false;
     }
 
-    private sealed record ContactVm(string FullName, int EscalationOrder);
-    private sealed record CustomerVm(string Name, List<ContactVm> Contacts);
+    private sealed record CustomerVm(
+        string Name,
+        int ContactCount,
+        int DeviceCount,
+        string PlanCode,
+        string SubscriptionStatus);
 }

@@ -1,0 +1,165 @@
+@page "/devices"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@inherits PortalPageBase
+
+<PageTitle>Protected devices</PageTitle>
+
+<h1 class="h3 mb-4">Protected devices</h1>
+
+@if (!PortalReady)
+{
+    <p class="text-secondary">Loading…</p>
+}
+else if (PortalScopeError is not null)
+{
+    <p class="text-danger">@PortalScopeError</p>
+}
+else
+{
+    @if (!string.IsNullOrEmpty(Banner))
+    {
+        <div class="alert alert-info" role="status">@Banner</div>
+    }
+
+    @if (RevealedKey is not null)
+    {
+        <div class="alert alert-warning">
+            <strong>Save this device key now.</strong> It will not be shown again.
+            <div class="mt-2 font-monospace small user-select-all">@RevealedKey.IngestApiKey</div>
+            <span class="small text-secondary d-block mt-1">External id: @RevealedKey.ExternalDeviceId</span>
+        </div>
+    }
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h2 class="h5">Add a PC</h2>
+            <div class="row g-2 align-items-end">
+                <div class="col-md-6">
+                    <label class="form-label">Display name</label>
+                    <input class="form-control" @bind="NewDeviceName" disabled="@Busy" />
+                </div>
+                <div class="col-md-4">
+                    <button type="button" class="btn btn-primary" disabled="@Busy" @onclick="AddDeviceAsync">Add device</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-sm align-middle">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>External id</th>
+                    <th>Key</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var d in DeviceList)
+                {
+                    <tr>
+                        <td>@d.DeviceName</td>
+                        <td class="font-monospace small">@d.ExternalDeviceId</td>
+                        <td>@(d.HasIngestKey ? "Configured" : "—")</td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@Busy"
+                                    @onclick="() => RotateKeyAsync(d.Id)">
+                                Rotate key
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card border-0 bg-light">
+        <div class="card-body small text-secondary">
+            <p class="mb-2">Configure the Windows broker (<code>appsettings.json</code> or environment):</p>
+            <ul class="mb-0">
+                <li><code>CloudAlerts:Enabled</code> = true</li>
+                <li><code>CloudAlerts:BaseUrl</code> = your API URL</li>
+                <li><code>CloudAlerts:ExternalDeviceId</code> = external id from the table</li>
+                <li><code>CloudAlerts:DeviceIngestApiKey</code> = key shown when you add or rotate</li>
+            </ul>
+            <a class="btn btn-link btn-sm ps-0 mt-2" href="@InstallerUrl" target="_blank" rel="noopener">Installer download</a>
+        </div>
+    </div>
+}
+
+@using ScamAlert.Api.Contracts
+@using ScamAlert.Api.Services.Portal
+@using Microsoft.Extensions.Options
+@using ScamAlert.Api.Services.Web
+@inject IPortalDeviceService DeviceService
+@inject IOptions<WebSiteOptions> WebOptions
+
+@code {
+    private List<PortalDeviceResponse> DeviceList { get; } = [];
+    private PortalDeviceCreatedResponse? RevealedKey { get; set; }
+    private string NewDeviceName { get; set; } = "Family PC";
+    private string? Banner { get; set; }
+    private bool Busy { get; set; }
+    private string InstallerUrl => WebOptions.Value.InstallerDownloadUrl;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        if (CustomerId is not null)
+        {
+            await ReloadAsync();
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        DeviceList.Clear();
+        DeviceList.AddRange(await DeviceService.ListAsync(CustomerId!.Value, default));
+    }
+
+    private async Task AddDeviceAsync()
+    {
+        Busy = true;
+        Banner = null;
+        RevealedKey = null;
+        try
+        {
+            RevealedKey = await DeviceService.CreateAsync(
+                CustomerId!.Value,
+                new CreatePortalDeviceRequest(NewDeviceName, null),
+                default);
+            Banner = "Device added.";
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            Banner = ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    private async Task RotateKeyAsync(Guid deviceId)
+    {
+        Busy = true;
+        Banner = null;
+        RevealedKey = null;
+        try
+        {
+            RevealedKey = await DeviceService.RotateIngestKeyAsync(CustomerId!.Value, deviceId, default);
+            Banner = RevealedKey is null ? "Device not found." : "New key generated.";
+        }
+        catch (Exception ex)
+        {
+            Banner = ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+}

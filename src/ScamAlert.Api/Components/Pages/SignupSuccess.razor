@@ -1,13 +1,52 @@
 @page "/signup/success"
 @attribute [AllowAnonymous]
+@rendermode InteractiveServer
 
 <PageTitle>Thank you</PageTitle>
 
-<div class="text-center py-5">
-    <h1 class="h3 mb-3">You are almost there</h1>
-    <p class="text-secondary col-lg-8 mx-auto">
-        If you completed payment, your subscription activates in a few seconds. Sign in to download the installer and review your
-        emergency contacts.
+<div class="py-5">
+    <h1 class="h3 mb-3 text-center">You are almost there</h1>
+    <p class="text-secondary col-lg-8 mx-auto text-center">
+        If you completed payment, your subscription activates in a few seconds. Sign in to manage contacts, devices, and billing.
     </p>
-    <a class="btn btn-primary mt-3" href="/login">Log in</a>
+
+    @if (ProvisionedDevices is { Count: > 0 })
+    {
+        <div class="col-lg-8 mx-auto mt-4">
+            <div class="alert alert-warning">
+                <strong>Save these device credentials now.</strong> They are not shown again after you leave this page.
+            </div>
+            <ul class="list-unstyled mb-0 font-monospace small">
+                @foreach (var d in ProvisionedDevices)
+                {
+                    <li class="mb-3 border-bottom pb-2">
+                        <div><strong>@d.DeviceName</strong></div>
+                        <div>External id: @d.ExternalDeviceId</div>
+                        <div class="user-select-all">Key: @d.IngestApiKey</div>
+                    </li>
+                }
+            </ul>
+            <p class="small text-secondary mt-2">
+                Configure <code>CloudAlerts</code> on the Windows broker, or add more devices from the portal after sign-in.
+            </p>
+        </div>
+    }
+
+    <div class="text-center mt-4">
+        <a class="btn btn-primary" href="/login">Log in</a>
+        <a class="btn btn-outline-secondary ms-2" href="/devices">Go to devices (after login)</a>
+    </div>
 </div>
+
+@using ScamAlert.Api.Contracts
+@using ScamAlert.Api.Services.Web
+@inject ProvisionedDevicesSession ProvisionedDevicesSession
+
+@code {
+    private IReadOnlyList<ProvisionedDeviceResponse>? ProvisionedDevices { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        ProvisionedDevices = await ProvisionedDevicesSession.LoadAndClearAsync();
+    }
+}

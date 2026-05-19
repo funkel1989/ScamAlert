@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using ScamAlert.Api.Contracts;
 using ScamAlert.Api.Services.Auth;
 using ScamAlert.Api.Services.Billing;
+using ScamAlert.Api.Services.Email;
 using ScamAlert.Api.Services.Stripe;
 using ScamAlert.Api.Services.Web;
 using ScamAlert.Data;
@@ -17,15 +18,20 @@ public interface ISignupService
     Task<SignupResult> RegisterAndStartCheckoutAsync(SelfServeSignupRequest request, CancellationToken cancellationToken);
 }
 
-public sealed record SignupResult(Guid CustomerId, string CheckoutUrl);
+public sealed record SignupResult(
+    Guid CustomerId,
+    string CheckoutUrl,
+    IReadOnlyList<ProvisionedDeviceResponse> ProvisionedDevices);
 
 public sealed class SignupService(
     ScamAlertDbContext dbContext,
     IPasswordHasher passwordHasher,
+    IEmailSender emailSender,
     IOptions<StripeOptions> stripeOptions,
     IOptions<WebSiteOptions> webOptions,
     IOptions<BillingOptions> billingOptions,
-    IBillingTierCatalog billingTierCatalog) : ISignupService
+    IBillingTierCatalog billingTierCatalog,
+    ILogger<SignupService> logger) : ISignupService
 {
     public async Task<SignupResult> RegisterAndStartCheckoutAsync(SelfServeSignupRequest request, CancellationToken cancellationToken)
     {
@@ -131,9 +137,21 @@ public sealed class SignupService(
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
+        var provisionedDevices = deviceProvisioning
+            .Select(x => new ProvisionedDeviceResponse(
+                x.Request.DeviceName.Trim(),
+                x.Request.ExternalDeviceId.Trim(),
+                x.ApiKey))
+            .ToList();
+
+        await TrySendWelcomeEmailAsync(email, request.Name.Trim(), provisionedDevices, web.PublicBaseUrl, cancellationToken);
+
         if (stripe.SkipPaymentForDevelopment)
         {
-            return new SignupResult(customerId, $"{TrimSlash(web.PublicBaseUrl)}/signup/success");
+            return new SignupResult(
+                customerId,
+                $"{TrimSlash(web.PublicBaseUrl)}/signup/success",
+                provisionedDevices);
         }
 
         if (string.IsNullOrWhiteSpace(stripe.SecretKey))
@@ -176,7 +194,43 @@ public sealed class SignupService(
             },
             cancellationToken: cancellationToken);
 
-        return new SignupResult(customerId, session.Url ?? throw new InvalidOperationException("Stripe returned no checkout URL."));
+        return new SignupResult(
+            customerId,
+            session.Url ?? throw new InvalidOperationException("Stripe returned no checkout URL."),
+            provisionedDevices);
+    }
+
+    private async Task TrySendWelcomeEmailAsync(
+        string email,
+        string name,
+        IReadOnlyList<ProvisionedDeviceResponse> devices,
+        string publicBaseUrl,
+        CancellationToken cancellationToken)
+    {
+        var deviceLines = string.Join(
+            Environment.NewLine,
+            devices.Select(d =>
+                $"- {d.DeviceName}: external id {d.ExternalDeviceId}, ingest key (save now): {d.IngestApiKey}"));
+
+        var body = $"""
+            Hi {name},
+
+            Welcome to ScamAlert. Sign in at {TrimSlash(publicBaseUrl)}/login to manage contacts and billing.
+
+            Your protected device credentials (shown once):
+            {deviceLines}
+
+            Configure the Windows broker CloudAlerts settings with these values, or add more devices from the portal after sign-in.
+            """;
+
+        try
+        {
+            await emailSender.SendAsync(email, "Welcome to ScamAlert", body, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Welcome email failed for {Email}", email);
+        }
     }
 
     private static string TrimSlash(string url) => url.TrimEnd('/');

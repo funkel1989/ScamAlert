@@ -12,6 +12,7 @@ public sealed class ScamAlertDbContext(DbContextOptions<ScamAlertDbContext> opti
     public DbSet<AlertEvent> AlertEvents => Set<AlertEvent>();
     public DbSet<NotificationAttempt> NotificationAttempts => Set<NotificationAttempt>();
     public DbSet<AuthUserCredential> AuthUserCredentials => Set<AuthUserCredential>();
+    public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -109,6 +110,15 @@ public sealed class ScamAlertDbContext(DbContextOptions<ScamAlertDbContext> opti
             entity.Property(x => x.RolesCsv).HasMaxLength(500);
             entity.Property(x => x.CustomerScopeCsv).HasMaxLength(2000);
             entity.HasIndex(x => x.Username).IsUnique();
+        });
+
+        modelBuilder.Entity<PasswordResetToken>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Username).HasMaxLength(320);
+            entity.Property(x => x.TokenHash).HasMaxLength(128);
+            entity.HasIndex(x => x.TokenHash);
+            entity.HasIndex(x => new { x.Username, x.IsUsed, x.ExpiresUtc });
         });
     }
 }

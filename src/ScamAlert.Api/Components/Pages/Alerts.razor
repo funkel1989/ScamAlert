@@ -1,0 +1,80 @@
+@page "/alerts"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+<PageTitle>Alerts</PageTitle>
+
+<h1 class="h3 mb-4">Recent alerts</h1>
+
+@if (Loading)
+{
+    <p class="text-secondary">Loading…</p>
+}
+else if (!string.IsNullOrEmpty(Error))
+{
+    <p class="text-danger">@Error</p>
+}
+else if (Items.Count == 0)
+{
+    <p class="text-secondary">No alerts yet. They appear when a protected PC reports suspicious remote access.</p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-sm">
+            <thead>
+                <tr>
+                    <th>When (UTC)</th>
+                    <th>Source</th>
+                    <th>Port</th>
+                    <th>Service</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var a in Items)
+                {
+                    <tr>
+                        <td class="small">@a.CreatedUtc.ToString("u")</td>
+                        <td>@a.SourceIp</td>
+                        <td>@a.DestinationPort</td>
+                        <td>@a.Service</td>
+                        <td>@a.ResolutionStatus</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@using System.Net.Http.Json
+@using ScamAlert.Api.Contracts
+@inject HttpClient Http
+
+@code {
+    private bool Loading { get; set; } = true;
+    private string? Error { get; set; }
+    private List<AlertSummaryResponse> Items { get; } = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var response = await Http.GetFromJsonAsync<AlertListPage>("/api/alerts?page=1&pageSize=50");
+            if (response?.Items is not null)
+            {
+                Items.AddRange(response.Items);
+            }
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            Loading = false;
+        }
+    }
+
+    private sealed record AlertListPage(int Page, int PageSize, int Total, List<AlertSummaryResponse> Items);
+}

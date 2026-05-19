@@ -74,6 +74,18 @@ The items below are **not done yet** but are useful to track for a production-re
 - Visual Studio 2022, optional but useful for running broker and tray together
 - Optional for native driver work: Visual Studio C++ tooling, Windows Driver Kit, Hyper-V, and a Windows test-signing VM. Do not enable test-signing on your daily workstation.
 
+## Portal (Phase 2, local)
+
+After signup or login, use:
+
+- `/dashboard` — account overview
+- `/contacts` — add/edit trusted contacts
+- `/devices` — add PCs, view **device ingest key once**, rotate keys
+- `/alerts` — recent alert history
+- `/forgot-password` / `/reset-password` — password reset (emails log to console without SendGrid)
+
+Signup returns device keys in the API response and on `/signup/success` (session). Welcome email content is logged when `Email:SendGridApiKey` is empty.
+
 ## Azure deployment (Phase 1)
 
 Staging infrastructure and CI/CD are documented in **[infra/README.md](infra/README.md)**. Go-live phases and locked MVP decisions are in **[docs/go-live-plan.md](docs/go-live-plan.md)**.

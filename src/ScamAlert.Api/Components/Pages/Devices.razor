@@ -28,7 +28,7 @@ else
             <strong>Pairing code (expires @ActivePairingCode.ExpiresUtc.ToLocalTime().ToString("g"))</strong>
             <div class="mt-2 font-monospace fs-4 user-select-all">@ActivePairingCode.Code</div>
             <p class="small mb-0 mt-2">
-                On the protected PC (after the <a href="@InstallerUrl" target="_blank" rel="noopener">desktop installer</a>), run <code>scripts\configure-broker-from-pairing-code.ps1</code>.
+                On the protected PC, run the <a href="@InstallerUrl" target="_blank" rel="noopener">desktop installer</a> — the <strong>Pair this PC</strong> wizard opens after setup (Start Menu → ScamAlert if you skipped it).
                 The code is single-use and expires in about 15 minutes.
             </p>
         </div>

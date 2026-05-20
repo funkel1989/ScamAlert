@@ -1,6 +1,6 @@
 # ScamAlert desktop installer (MSI)
 
-Packages **ScamAlert.Broker** (Windows service `ScamAlertBroker`) and **ScamAlert.Tray** (shortcut in the all-users Startup folder).
+Packages **ScamAlert.Broker** (Windows service `ScamAlertBroker`), **ScamAlert.Tray** (runs at logon), and **ScamAlert.Configurator** (pairing wizard).
 
 ## Build
 
@@ -10,6 +10,8 @@ The installer project is in the solution for editing but **not** built by defaul
 
 ```powershell
 .\scripts\build-desktop-installer.ps1
+# Production: bake your live API URL so families only enter the pairing code
+.\scripts\build-desktop-installer.ps1 -ApiBaseUrl "https://your-app.azurewebsites.net"
 ```
 
 Output: `installer\ScamAlert.DesktopInstaller\bin\Release\ScamAlert-Desktop.msi` (name may vary slightly by WiX version).
@@ -17,9 +19,9 @@ Output: `installer\ScamAlert.DesktopInstaller\bin\Release\ScamAlert-Desktop.msi`
 ## Install
 
 1. Run the MSI elevated (per-machine install under `Program Files\ScamAlert`).
-2. Confirm services: `sc query ScamAlertBroker` should show **RUNNING** (or start it).
-3. Sign out/in (or reboot) so the Tray shortcut in Startup runs in the user session.
-4. In the portal: **Devices → Pair PC** → run `scripts\configure-broker-from-pairing-code.ps1` on that machine (pairing UI inside the MSI is planned next).
+2. The **Pair this PC** wizard opens — enter the code from **Devices → Pair PC** (and your website URL only if the installer was not built with a baked-in API address).
+3. Confirm services: `sc query ScamAlertBroker` should show **RUNNING** (or start it).
+4. Sign out/in (or reboot) so Tray runs in the user session. Re-open the wizard from **Start Menu → ScamAlert → Pair this PC** if needed.
 
 ## Layout
 
@@ -27,6 +29,7 @@ Output: `installer\ScamAlert.DesktopInstaller\bin\Release\ScamAlert-Desktop.msi`
 |------|---------|
 | `Program Files\ScamAlert\Broker\` | Broker service binaries |
 | `Program Files\ScamAlert\Tray\` | Tray UI binaries |
+| `Program Files\ScamAlert\Setup\` | Pairing wizard (`ScamAlert.Configurator.exe`) |
 | `%ProgramData%\ScamAlert\` | `broker.appsettings.json` (written by pairing script) |
 
 ## Signing (production)

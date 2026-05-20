@@ -16,7 +16,7 @@
 |-------|--------|--------|
 | **1 — Azure foundation** | Code complete — **deploy last (beta)** | Bicep, CI/CD, staging deploy |
 | **2 — Portal & onboarding** | Done (local) | Devices, contacts CRUD, email, keys, portal UI |
-| **3 — Windows installer** | In progress | Pairing codes + broker config done; MSI next |
+| **3 — Windows installer** | Done (local) | MSI + pairing wizard; code signing optional |
 | **4 — Marketing & compliance** | Done (local) | Pricing, legal, SEO, signup consents |
 | **5 — Beta hardening** | In progress | Health checks, production validator, runbooks |
 | **6 — Kernel driver** | Deferred | Not in MVP |
@@ -43,4 +43,4 @@ See **[production-prep.md](production-prep.md)** for the pre-deploy checklist.
 - [x] Broker loads `ProgramData\ScamAlert\broker.appsettings.json`
 - [x] MSI packaging Broker (Windows service) + Tray (`installer/`, `scripts/build-desktop-installer.ps1`)
 - [ ] Code-signed MSI for production SmartScreen trust
-- [ ] Installer pairing UI (calls redeem, writes config — script works today)
+- [x] Installer pairing UI (`ScamAlert.Configurator` — redeem, write config, launch after MSI)

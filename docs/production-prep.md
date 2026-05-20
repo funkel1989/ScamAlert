@@ -12,7 +12,7 @@ Deploy to Azure is the **last step** for the family beta. Complete the items bel
 | Broker reads `%ProgramData%\ScamAlert\broker.appsettings.json` | Done |
 | MSI (Broker service + Tray) | Done — `scripts/build-desktop-installer.ps1` |
 | Code-signed MSI | Planned (beta can use unsigned) |
-| Installer pairing UI | Planned (use pairing script after MSI) |
+| Installer pairing UI (`ScamAlert.Configurator`) | Done |
 
 ## Phase 5 — Hardening (in progress)
 

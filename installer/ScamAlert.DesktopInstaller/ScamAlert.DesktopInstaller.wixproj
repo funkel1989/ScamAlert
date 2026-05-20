@@ -6,7 +6,10 @@
     <ProductVersion>0.1.0.0</ProductVersion>
     <BrokerPublishDir>$(MSBuildThisFileDirectory)..\..\artifacts\installer\broker\</BrokerPublishDir>
     <TrayPublishDir>$(MSBuildThisFileDirectory)..\..\artifacts\installer\tray\</TrayPublishDir>
-    <DefineConstants>BrokerPublishDir=$(BrokerPublishDir);TrayPublishDir=$(TrayPublishDir);ProductVersion=$(ProductVersion)</DefineConstants>
+    <ConfiguratorPublishDir>$(MSBuildThisFileDirectory)..\..\artifacts\installer\configurator\</ConfiguratorPublishDir>
+    <!-- Set at build time: dotnet build -p:DefaultApiBaseUrl=https://your-app.azurewebsites.net -->
+    <DefaultApiBaseUrl Condition="'$(DefaultApiBaseUrl)' == ''"></DefaultApiBaseUrl>
+    <DefineConstants>BrokerPublishDir=$(BrokerPublishDir);TrayPublishDir=$(TrayPublishDir);ConfiguratorPublishDir=$(ConfiguratorPublishDir);ProductVersion=$(ProductVersion);DefaultApiBaseUrl=$(DefaultApiBaseUrl)</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
@@ -25,8 +28,13 @@
       Projects="$(MSBuildThisFileDirectory)..\..\src\ScamAlert.Tray\ScamAlert.Tray.csproj"
       Targets="Publish"
       Properties="$(_PublishProps);PublishDir=$(TrayPublishDir)" />
+    <MSBuild
+      Projects="$(MSBuildThisFileDirectory)..\..\src\ScamAlert.Configurator\ScamAlert.Configurator.csproj"
+      Targets="Publish"
+      Properties="$(_PublishProps);PublishDir=$(ConfiguratorPublishDir)" />
     <Error Condition="!Exists('$(BrokerPublishDir)ScamAlert.Broker.exe')" Text="Broker publish output missing at $(BrokerPublishDir)" />
     <Error Condition="!Exists('$(TrayPublishDir)ScamAlert.Tray.exe')" Text="Tray publish output missing at $(TrayPublishDir)" />
+    <Error Condition="!Exists('$(ConfiguratorPublishDir)ScamAlert.Configurator.exe')" Text="Configurator publish output missing at $(ConfiguratorPublishDir)" />
   </Target>
 
 </Project>

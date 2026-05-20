@@ -25,7 +25,7 @@ See **[docs/production-prep.md](docs/production-prep.md)** and **[docs/go-live-p
 
 **Desktop MSI:** `.\scripts\build-desktop-installer.ps1` → installs Broker (Windows service) + Tray. See [installer/README.md](installer/README.md).
 
-**Pair a PC:** install MSI → `/devices` → **Pair PC** → `scripts/configure-broker-from-pairing-code.ps1` on that machine (installer pairing UI planned next).
+**Pair a PC:** install MSI → **Pair this PC** wizard (or `/devices` → **Pair PC** for the code). PowerShell script remains as a fallback for IT setups.
 
 ## Projects
 

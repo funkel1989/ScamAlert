@@ -20,14 +20,33 @@
     <Feature Id="DesktopFeature" Title="ScamAlert desktop protection" Level="1">
       <ComponentGroupRef Id="BrokerComponents" />
       <ComponentGroupRef Id="TrayComponents" />
+      <ComponentGroupRef Id="ConfiguratorComponents" />
       <ComponentRef Id="ProgramDataFolderComponent" />
+      <ComponentRef Id="ScamAlertRegistryComponent" />
+      <ComponentRef Id="ScamAlertProgramMenuFolderComponent" />
     </Feature>
+
+    <CustomAction
+      Id="LaunchConfigurator"
+      FileRef="ConfiguratorExe"
+      ExeCommand=""
+      Return="asyncNoWait"
+      Impersonate="yes" />
+
+    <InstallExecuteSequence>
+      <Custom Action="LaunchConfigurator" After="InstallFinalize" Condition="NOT REMOVE=&quot;ALL&quot;" />
+    </InstallExecuteSequence>
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="ScamAlert">
         <Directory Id="BrokerFolder" Name="Broker" />
         <Directory Id="TrayFolder" Name="Tray" />
+        <Directory Id="SetupFolder" Name="Setup" />
       </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ScamAlertProgramMenuFolder" Name="ScamAlert" />
     </StandardDirectory>
 
     <StandardDirectory Id="CommonAppDataFolder">
@@ -64,6 +83,48 @@
         <Exclude Files="$(var.BrokerPublishDir)ScamAlert.Broker.exe" />
       </Files>
     </ComponentGroup>
+
+    <Component Id="ScamAlertRegistryComponent" Directory="INSTALLFOLDER" Guid="D1E2F3A4-B5C6-4D7E-8F90-1A2B3C4D5E6F">
+      <RegistryValue
+        Root="HKLM"
+        Key="Software\ScamAlert"
+        Name="ApiBaseUrl"
+        Value="$(var.DefaultApiBaseUrl)"
+        Type="string" />
+    </Component>
+
+    <ComponentGroup Id="ConfiguratorComponents" Directory="SetupFolder">
+      <Component Id="ConfiguratorExeComponent" Guid="F4A5B6C7-D8E9-4F0A-1B2C-3D4E5F6A7B8C">
+        <File
+          Id="ConfiguratorExe"
+          Source="$(var.ConfiguratorPublishDir)ScamAlert.Configurator.exe"
+          KeyPath="yes" />
+      </Component>
+      <Files Include="$(var.ConfiguratorPublishDir)**">
+        <Exclude Files="$(var.ConfiguratorPublishDir)ScamAlert.Configurator.exe" />
+      </Files>
+    </ComponentGroup>
+
+    <Component
+      Id="ScamAlertProgramMenuFolderComponent"
+      Directory="ScamAlertProgramMenuFolder"
+      Guid="A9B8C7D6-E5F4-4A3B-2C1D-0E9F8A7B6C5D">
+      <CreateFolder />
+      <Shortcut
+        Id="ConfiguratorStartMenuShortcut"
+        Name="Pair this PC"
+        Description="Link this computer to your ScamAlert account"
+        Target="[INSTALLFOLDER]Setup\ScamAlert.Configurator.exe"
+        WorkingDirectory="SetupFolder" />
+      <RemoveFolder Directory="ScamAlertProgramMenuFolder" On="uninstall" />
+      <RegistryValue
+        Root="HKCU"
+        Key="Software\ScamAlert"
+        Name="installed"
+        Type="integer"
+        Value="1"
+        KeyPath="yes" />
+    </Component>
 
     <ComponentGroup Id="TrayComponents" Directory="TrayFolder">
       <Component Id="TrayExeComponent" Guid="C3D5E7F9-2B4C-5D6E-0F1A-3B5C7D9E1F23">

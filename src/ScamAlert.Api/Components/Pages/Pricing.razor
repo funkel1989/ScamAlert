@@ -1,0 +1,47 @@
+@page "/pricing"
+@attribute [AllowAnonymous]
+
+<PageMeta Title="Pricing — $7.99/month to protect family PCs"
+          Description="One simple plan: $7.99 per month to watch loved ones' Windows PCs and alert family by SMS."
+          CanonicalPath="/pricing" />
+
+<h1 class="h3 mb-2">Simple pricing</h1>
+<p class="text-secondary mb-4">
+    One plan for families in the United States (@MarketRegion). <strong>@PriceLabel</strong>, billed through secure checkout.
+    Cancel anytime from your account.
+</p>
+
+@if (Tier is not null)
+{
+    <div class="row justify-content-center mb-4">
+        <div class="col-lg-6">
+            <div class="card shadow-sm border-primary">
+                <div class="card-body d-flex flex-column p-4">
+                    <h2 class="h4">@Tier.DisplayName</h2>
+                    <p class="display-6 fw-semibold text-sa-accent mb-2">@PriceLabel</p>
+                    <p class="text-secondary">@(Tier.MarketingSummary ?? "Protect loved ones' PCs with alerts to family you choose.")</p>
+                    <ul class="small text-secondary flex-grow-1">
+                        @foreach (var feature in Tier.MarketingFeatures)
+                        {
+                            <li class="mb-1">@feature</li>
+                        }
+                    </ul>
+                    <a class="btn btn-primary btn-lg" href="/signup">Start protecting my family</a>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<div class="small text-secondary col-lg-8 mx-auto text-center">
+    <p class="mb-1">Subscriptions renew until canceled in your billing portal. See <a href="/terms">Terms of service</a>.</p>
+    <p class="mb-0">SMS alerts require numbers you are authorized to use; message and data rates may apply.</p>
+</div>
+
+@inject IOptions<BillingOptions> Billing
+
+@code {
+    private BillingTierOptions? Tier => Billing.Value.Tiers.FirstOrDefault();
+    private string MarketRegion => Billing.Value.MarketRegion;
+    private string PriceLabel => Tier?.MonthlyPriceLabel ?? "$7.99 per month (USD)";
+}

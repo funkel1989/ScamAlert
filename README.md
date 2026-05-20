@@ -74,6 +74,16 @@ The items below are **not done yet** but are useful to track for a production-re
 - Visual Studio 2022, optional but useful for running broker and tray together
 - Optional for native driver work: Visual Studio C++ tooling, Windows Driver Kit, Hyper-V, and a Windows test-signing VM. Do not enable test-signing on your daily workstation.
 
+## Marketing & legal (Phase 4, local)
+
+Public pages: `/`, `/how-it-works`, `/pricing`, `/faq`, `/contact`, `/privacy`, `/terms`, `/cookies`.
+
+Signup requires acceptance of Terms, Privacy, SMS consent, and install permission. Update `Web:SupportEmail` and `Web:LegalEntityName` in appsettings before production.
+
+**Pricing:** One plan at **$7.99/month (USD)** (`Billing:Tiers` plan code `pro`, display name “Family protection”). Create a matching recurring price in Stripe and set `StripePriceId` before live checkout.
+
+**Note:** Legal pages are starter templates for a family SaaS MVP—not a substitute for review by your attorney before launch.
+
 ## Portal (Phase 2, local)
 
 After signup or login, use:

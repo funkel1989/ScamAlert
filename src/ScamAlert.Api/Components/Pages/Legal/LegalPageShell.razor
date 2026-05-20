@@ -1,0 +1,37 @@
+@* Parameters: Title, LastUpdated *@
+
+<PageMeta Title="@($"{Title} — ScamAlert")"
+          Description="@MetaDescription"
+          CanonicalPath="@CanonicalPath" />
+
+<article class="legal-doc">
+    <h1 class="h3 mb-1">@Title</h1>
+    <p class="text-secondary small mb-4">Last updated: @LastUpdated · @LegalEntityName · United States</p>
+    @ChildContent
+    <p class="small text-muted mt-5">
+        Questions? Contact <a href="mailto:@SupportEmail">@SupportEmail</a> or visit
+        <a href="/contact">support</a>.
+        This page is provided for transparency and does not constitute legal advice.
+    </p>
+</article>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = "";
+
+    [Parameter, EditorRequired]
+    public string MetaDescription { get; set; } = "";
+
+    [Parameter, EditorRequired]
+    public string CanonicalPath { get; set; } = "";
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Inject]
+    private IOptions<WebSiteOptions> WebOptions { get; set; } = null!;
+
+    private string LegalEntityName => WebOptions.Value.LegalEntityName;
+    private string SupportEmail => WebOptions.Value.SupportEmail;
+    private string LastUpdated => WebOptions.Value.LegalEffectiveDate;
+}

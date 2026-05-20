@@ -40,8 +40,13 @@ public sealed class TestWebApplicationFactory : WebApplicationFactory<Program>
             {
                 o.Tiers =
                 [
-                    new BillingTierOptions { PlanCode = "pro", StripePriceId = "price_test_placeholder", DisplayName = "Pro" },
-                    new BillingTierOptions { PlanCode = "family", StripePriceId = "price_test_family", DisplayName = "Family" }
+                    new BillingTierOptions
+                    {
+                        PlanCode = "pro",
+                        StripePriceId = "price_test_799",
+                        DisplayName = "Family protection",
+                        MonthlyPriceLabel = "$7.99 per month (USD)"
+                    }
                 ];
             });
             services.PostConfigure<AlertsOptions>(o =>

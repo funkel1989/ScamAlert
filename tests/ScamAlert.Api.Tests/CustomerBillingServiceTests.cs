@@ -25,7 +25,7 @@ public sealed class CustomerBillingServiceTests
     }
 
     [Fact]
-    public async Task Change_plan_updates_plan_code_when_skip_payment()
+    public async Task GetSummary_exposes_single_seven_ninety_nine_tier()
     {
         await using var factory = new TestWebApplicationFactory();
         var customerId = Guid.NewGuid();
@@ -65,11 +65,12 @@ public sealed class CustomerBillingServiceTests
             ["operator"],
             [customerId.ToString("D")]);
 
-        await billing.ChangePlanAsync(principal, "family", default);
+        var summary = await billing.GetSummaryAsync(principal, default);
 
-        var db2 = scope.ServiceProvider.GetRequiredService<ScamAlertDbContext>();
-        var sub = await db2.Subscriptions.AsNoTracking().SingleAsync(x => x.CustomerId == customerId);
-        Assert.Equal("family", sub.PlanCode);
+        Assert.NotNull(summary);
+        Assert.Equal("pro", summary.PlanCode);
+        Assert.Single(summary.AvailableTiers);
+        Assert.Equal("Family protection", summary.AvailableTiers[0].DisplayName);
     }
 
     [Fact]

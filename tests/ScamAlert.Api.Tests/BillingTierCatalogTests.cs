@@ -21,10 +21,10 @@ public sealed class BillingTierCatalogTests
     {
         var catalog = new BillingTierCatalog(Options.Create(new BillingOptions
         {
-            Tiers = [new BillingTierOptions { PlanCode = "family", StripePriceId = "price_xyz" }]
+            Tiers = [new BillingTierOptions { PlanCode = "pro", StripePriceId = "price_xyz" }]
         }));
 
-        Assert.Equal("family", catalog.TryGetPlanCodeForStripePriceId("price_xyz"));
+        Assert.Equal("pro", catalog.TryGetPlanCodeForStripePriceId("price_xyz"));
     }
 
     [Fact]

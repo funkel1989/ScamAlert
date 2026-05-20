@@ -2,7 +2,14 @@
 
 <div class="d-flex flex-wrap gap-2 align-items-center">
     <a class="btn btn-link" href="/">Home</a>
-    <a class="btn btn-link" href="/signup">Sign up</a>
+    <AuthorizeView>
+        <NotAuthorized>
+            <a class="btn btn-link" href="/how-it-works">How it works</a>
+            <a class="btn btn-link" href="/pricing">Pricing</a>
+            <a class="btn btn-link" href="/faq">FAQ</a>
+            <a class="btn btn-link" href="/signup">Sign up</a>
+        </NotAuthorized>
+    </AuthorizeView>
     <AuthorizeView>
         <Authorized>
             <a class="btn btn-link" href="/dashboard">Account</a>

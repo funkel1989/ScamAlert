@@ -1,0 +1,123 @@
+@page "/privacy"
+@attribute [AllowAnonymous]
+
+<LegalPageShell Title="Privacy policy"
+                MetaDescription="How ScamAlert collects, uses, and protects personal information when you protect family PCs."
+                CanonicalPath="/privacy">
+
+    <section class="mb-4">
+        <h2 class="h5">Overview</h2>
+        <p>
+            @LegalEntityName ("ScamAlert," "we," "us") provides software and online services that help families detect and respond to
+            suspicious remote-access activity on Windows computers they choose to protect. This policy describes how we handle personal
+            information when you use our website, account portal, and related services (the "Service").
+        </p>
+        <p>
+            By using the Service, you agree to this policy. If you do not agree, do not use the Service.
+        </p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5">Information we collect</h2>
+        <ul>
+            <li><strong>Account information:</strong> name, email address, password (stored hashed), subscription and billing identifiers processed by Stripe.</li>
+            <li><strong>Trusted contacts:</strong> names and mobile phone numbers you provide for alert escalation.</li>
+            <li><strong>Device information:</strong> display names, device identifiers, and technical keys used to link installed software to your account.</li>
+            <li><strong>Security event data:</strong> remote-access attempt signals (for example source IP, port, protocol, timestamps) observed on protected PCs.</li>
+            <li><strong>Alert and notification records:</strong> alert status, SMS delivery metadata, and acknowledgment tokens.</li>
+            <li><strong>Technical logs:</strong> application logs, diagnostics, and cookies or similar technologies needed for authentication and security (see <a href="/cookies">cookie notice</a>).</li>
+        </ul>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5">How we use information</h2>
+        <p>We use personal information to:</p>
+        <ul>
+            <li>Provide, operate, and improve the Service;</li>
+            <li>Send SMS and email notifications you configure (through providers such as Twilio and email vendors);</li>
+            <li>Process subscriptions and prevent fraud;</li>
+            <li>Comply with law and enforce our <a href="/terms">Terms of service</a>;</li>
+            <li>Respond to support requests.</li>
+        </ul>
+        <p>We do not sell your personal information to data brokers for their independent marketing.</p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5">SMS and phone numbers</h2>
+        <p>
+            You are responsible for ensuring you have permission to add phone numbers for security alerts and that contacts understand they may
+            receive automated messages. Message frequency varies with activity. Message and data rates may apply. Contacts can reply as described
+            in alert messages (for example acknowledgment instructions). Carriers are not liable for delayed or undelivered messages.
+        </p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5">Legal bases (where applicable)</h2>
+        <p>
+            For users in jurisdictions that require a legal basis, we rely on performance of our contract with you, legitimate interests in
+            securing accounts and providing the Service, and consent where required (for example SMS to numbers you provide).
+        </p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5">Sharing with service providers</h2>
+        <p>We may share information with vendors who help us run the Service, such as:</p>
+        <ul>
+            <li>Cloud hosting and database providers;</li>
+            <li>Stripe (payments);</li>
+            <li>Twilio or similar carriers (SMS);</li>
+            <li>Email delivery providers;</li>
+            <li>Analytics and monitoring tools.</li>
+        </ul>
+        <p>These providers are permitted to process data only to perform services for us under appropriate safeguards.</p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5">Retention</h2>
+        <p>
+            We retain information while your account is active and for a reasonable period afterward for backups, legal compliance, and dispute
+            resolution. You may request deletion subject to applicable law and technical constraints.
+        </p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5">Security</h2>
+        <p>
+            We use administrative, technical, and organizational measures designed to protect information (including encryption in transit,
+            access controls, and hashed credentials). No method of transmission or storage is completely secure.
+        </p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5">Children</h2>
+        <p>
+            The Service is intended for adults managing family accounts. We do not knowingly collect personal information directly from children
+            under 13 without appropriate parental involvement. If you believe we have done so, contact us.
+        </p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5">Your choices and rights</h2>
+        <p>
+            Depending on your location, you may have rights to access, correct, delete, or export personal information, or to object to certain
+            processing. Contact <a href="mailto:@SupportEmail">@SupportEmail</a>. We may verify your request.
+        </p>
+        <p>California residents may have additional rights under applicable state privacy laws; contact us to exercise them.</p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5">Changes</h2>
+        <p>
+            We may update this policy. We will post the new date at the top and, for material changes, provide additional notice where required.
+            Continued use after changes means you accept the updated policy.
+        </p>
+    </section>
+
+</LegalPageShell>
+
+@inject IOptions<WebSiteOptions> WebOptions
+
+@code {
+    private string LegalEntityName => WebOptions.Value.LegalEntityName;
+    private string SupportEmail => WebOptions.Value.SupportEmail;
+}

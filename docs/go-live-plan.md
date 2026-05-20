@@ -16,7 +16,7 @@
 | **1 — Azure foundation** | Code complete — deploy to your subscription | Bicep, CI/CD, staging deploy |
 | **2 — Portal & onboarding** | Done (local) | Devices, contacts CRUD, email, keys, portal UI |
 | **3 — Windows installer** | Planned | Broker + Tray MSI, pairing |
-| **4 — Marketing & compliance** | Planned | Pricing, legal, SEO |
+| **4 — Marketing & compliance** | Done (local) | Pricing, legal, SEO, signup consents |
 | **5 — Beta hardening** | Planned | Monitoring, runbooks |
 | **6 — Kernel driver** | Deferred | Not in MVP |
 

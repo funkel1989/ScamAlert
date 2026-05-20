@@ -6,8 +6,11 @@
 
 <div class="row justify-content-center">
     <div class="col-lg-8">
-        <h1 class="h3 mb-2">Create your account</h1>
-        <p class="text-secondary mb-4">Secure checkout with Stripe. Trusted contacts receive SMS when suspicious remote access is detected.</p>
+        <h1 class="h3 mb-2">Create your family account</h1>
+        <p class="text-secondary mb-4">
+            Set up protection for a PC someone you love uses. Trusted contacts (often you and another family member) get SMS when
+            suspicious remote access is detected.
+        </p>
         @if (!string.IsNullOrEmpty(Message))
         {
             <div class="alert @(IsError ? "alert-danger" : "alert-info")">@Message</div>
@@ -30,12 +33,19 @@
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Plan</label>
-                    <InputSelect class="form-select" @bind-Value="Model.PlanCode">
-                        @foreach (var plan in Plans)
-                        {
-                            <option value="@plan.PlanCode">@plan.DisplayName</option>
-                        }
-                    </InputSelect>
+                    @if (Plans.Count <= 1)
+                    {
+                        <p class="form-control-plaintext fw-semibold mb-0">@SinglePlanDisplay</p>
+                    }
+                    else
+                    {
+                        <InputSelect class="form-select" @bind-Value="Model.PlanCode">
+                            @foreach (var plan in Plans)
+                            {
+                                <option value="@plan.PlanCode">@plan.DisplayName</option>
+                            }
+                        </InputSelect>
+                    }
                 </div>
                 <div class="col-12"><hr /></div>
                 <div class="col-md-6">
@@ -55,8 +65,38 @@
                     <InputText class="form-control" @bind-Value="Model.SecondaryPhone" />
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label">PC / device display name</label>
+                    <label class="form-label">PC to protect (display name)</label>
                     <InputText class="form-control" @bind-Value="Model.DeviceName" />
+                    <div class="form-text">Example: "Mom's laptop" — install our app on that Windows PC after signup.</div>
+                </div>
+                <div class="col-12"><hr /></div>
+                <div class="col-12">
+                    <h2 class="h6">Agreements</h2>
+                    <div class="form-check mb-2">
+                        <InputCheckbox class="form-check-input" @bind-Value="Model.AcceptTerms" id="acceptTerms" />
+                        <label class="form-check-label" for="acceptTerms">
+                            I agree to the <a href="/terms" target="_blank">Terms of service</a>.
+                        </label>
+                    </div>
+                    <div class="form-check mb-2">
+                        <InputCheckbox class="form-check-input" @bind-Value="Model.AcceptPrivacy" id="acceptPrivacy" />
+                        <label class="form-check-label" for="acceptPrivacy">
+                            I have read the <a href="/privacy" target="_blank">Privacy policy</a>.
+                        </label>
+                    </div>
+                    <div class="form-check mb-2">
+                        <InputCheckbox class="form-check-input" @bind-Value="Model.AcceptSmsConsent" id="acceptSms" />
+                        <label class="form-check-label" for="acceptSms">
+                            I confirm I have permission to add the mobile numbers above for automated security alerts by SMS.
+                            Message and data rates may apply. Message frequency varies. This is not marketing spam from ScamAlert staff.
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <InputCheckbox class="form-check-input" @bind-Value="Model.ConfirmInstallPermission" id="confirmInstall" />
+                        <label class="form-check-label" for="confirmInstall">
+                            I will only install protection on PCs I own or where the user has given me clear permission.
+                        </label>
+                    </div>
                 </div>
             </div>
             <button class="btn btn-primary mt-4" type="submit" disabled="@Busy">Continue to payment</button>
@@ -72,6 +112,7 @@
 @inject HttpClient Http
 @inject NavigationManager NavigationManager
 @inject ProvisionedDevicesSession ProvisionedDevicesSession
+@inject IOptions<BillingOptions> BillingOptions
 
 @code {
     private bool Busy { get; set; }
@@ -79,7 +120,21 @@
     private bool IsError { get; set; }
     private List<SignupPlanResponse> Plans { get; } = [];
 
+    private string SinglePlanDisplay
+    {
+        get
+        {
+            var tier = BillingOptions.Value.Tiers.FirstOrDefault();
+            var name = Plans.FirstOrDefault()?.DisplayName ?? tier?.DisplayName ?? "Family protection";
+            var price = tier?.MonthlyPriceLabel ?? "$7.99 per month";
+            return $"{name} — {price}";
+        }
+    }
+
     private SignupFormModel Model { get; } = new();
+
+    [SupplyParameterFromQuery(Name = "plan")]
+    public string? PlanQuery { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
@@ -89,13 +144,20 @@
             if (plans is { Count: > 0 })
             {
                 Plans.AddRange(plans);
-                Model.PlanCode = Plans[0].PlanCode;
             }
         }
         catch
         {
-            Plans.Add(new SignupPlanResponse("pro", "Pro"));
-            Plans.Add(new SignupPlanResponse("family", "Family"));
+            Plans.Add(new SignupPlanResponse("pro", "Family protection"));
+        }
+
+        if (!string.IsNullOrWhiteSpace(PlanQuery) && Plans.Any(p => p.PlanCode.Equals(PlanQuery, StringComparison.OrdinalIgnoreCase)))
+        {
+            Model.PlanCode = PlanQuery.Trim();
+        }
+        else if (Plans.Count > 0)
+        {
+            Model.PlanCode = Plans[0].PlanCode;
         }
     }
 
@@ -104,6 +166,15 @@
         Busy = true;
         Message = null;
         IsError = false;
+
+        if (!Model.AcceptTerms || !Model.AcceptPrivacy || !Model.AcceptSmsConsent || !Model.ConfirmInstallPermission)
+        {
+            IsError = true;
+            Message = "Please accept all agreements before continuing.";
+            Busy = false;
+            return;
+        }
+
         try
         {
             var contacts = new List<CreateContactRequest>
@@ -192,5 +263,10 @@
 
         [Required, MaxLength(200)]
         public string DeviceName { get; set; } = "Family PC";
+
+        public bool AcceptTerms { get; set; }
+        public bool AcceptPrivacy { get; set; }
+        public bool AcceptSmsConsent { get; set; }
+        public bool ConfirmInstallPermission { get; set; }
     }
 }

@@ -1,0 +1,28 @@
+@* Usage: <PageMeta Title="..." Description="..." /> *@
+<PageTitle>@Title</PageTitle>
+<HeadContent>
+    <meta name="description" content="@Description" />
+    <meta property="og:title" content="@Title" />
+    <meta property="og:description" content="@Description" />
+    <meta property="og:type" content="website" />
+    @if (!string.IsNullOrWhiteSpace(CanonicalPath))
+    {
+        <link rel="canonical" href="@($"{PublicBaseUrl.TrimEnd('/')}{CanonicalPath}")" />
+    }
+</HeadContent>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = "";
+
+    [Parameter, EditorRequired]
+    public string Description { get; set; } = "";
+
+    [Parameter]
+    public string CanonicalPath { get; set; } = "";
+
+    [Inject]
+    private IOptions<WebSiteOptions> WebOptions { get; set; } = null!;
+
+    private string PublicBaseUrl => WebOptions.Value.PublicBaseUrl;
+}

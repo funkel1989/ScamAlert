@@ -1,0 +1,60 @@
+@page "/faq"
+@attribute [AllowAnonymous]
+
+<PageMeta Title="FAQ — ScamAlert"
+          Description="Common questions about protecting family PCs, SMS alerts, and how ScamAlert helps you watch loved ones."
+          CanonicalPath="/faq" />
+
+<h1 class="h3 mb-4">Frequently asked questions</h1>
+
+<div class="accordion" id="faqAccordion">
+    @foreach (var item in Items)
+    {
+        <div class="accordion-item">
+            <h2 class="accordion-header">
+                <button class="accordion-button @(item.Open ? null : "collapsed")" type="button"
+                        @onclick="() => Toggle(item)">
+                    @item.Question
+                </button>
+            </h2>
+            <div class="accordion-collapse collapse @(item.Open ? "show" : "")">
+                <div class="accordion-body text-secondary">@item.Answer</div>
+            </div>
+        </div>
+    }
+</div>
+
+<p class="mt-4 mb-0">
+    Still have questions? <a href="/contact">Contact us</a> or read <a href="/how-it-works">how it works</a>.
+</p>
+
+@code {
+    private List<FaqItem> Items { get; } =
+    [
+        new("Who is ScamAlert for?",
+            "Families and caregivers who want to watch Windows PCs used by parents, grandparents, teens, or other loved ones—especially when you cannot be there in person."),
+        new("What does ScamAlert actually watch?",
+            "Inbound remote-access style traffic on protected ports (such as RDP, SSH, and Telnet) on PCs where you install our Windows app. It is an early-warning layer, not full antivirus."),
+        new("Who gets the text messages?",
+            "Only the trusted contacts you add to your account—typically adult family members. We do not sell your alert list to marketers."),
+        new("Do I need permission to protect someone's PC?",
+            "Yes. You should only install on computers you own or where you have clear permission from the user. Talk with your loved one about why you are adding protection."),
+        new("Will this stop every scam?",
+            "No product can. ScamAlert helps your family notice suspicious remote access sooner. Education and phone calls still matter."),
+        new("Does it read their email or browsing history?",
+            "No. We focus on remote-access attempt signals and account data needed to run the service—not on monitoring general web activity."),
+        new("What countries do you support?",
+            "The service is designed for United States customers (USD billing, US-oriented compliance). Contact us if you need other regions."),
+        new("How do I cancel?",
+            "Use the billing area in your account after sign-in, or the Stripe customer portal. See our Terms for details."),
+    ];
+
+    private void Toggle(FaqItem item) => item.Open = !item.Open;
+
+    private sealed class FaqItem(string question, string answer)
+    {
+        public string Question { get; } = question;
+        public string Answer { get; } = answer;
+        public bool Open { get; set; }
+    }
+}

@@ -53,26 +53,42 @@ else
                 </div>
             </div>
         </div>
-        <div class="col-lg-6">
-            <div class="card shadow-sm h-100">
-                <div class="card-body">
-                    <h2 class="h5">Change plan</h2>
-                    <p class="small text-secondary">Upgrades or downgrades prorate on your next Stripe invoice (live mode).</p>
-                    <div class="mb-3">
-                        <label class="form-label" for="planSelect">Plan</label>
-                        <select id="planSelect" class="form-select" @bind="SelectedPlanCode" disabled="@Busy">
-                            @foreach (var t in Summary.AvailableTiers)
-                            {
-                                <option value="@t.PlanCode">@t.DisplayName</option>
-                            }
-                        </select>
+        @if (Summary.AvailableTiers.Count > 1)
+        {
+            <div class="col-lg-6">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body">
+                        <h2 class="h5">Change plan</h2>
+                        <p class="small text-secondary">Upgrades or downgrades prorate on your next Stripe invoice (live mode).</p>
+                        <div class="mb-3">
+                            <label class="form-label" for="planSelect">Plan</label>
+                            <select id="planSelect" class="form-select" @bind="SelectedPlanCode" disabled="@Busy">
+                                @foreach (var t in Summary.AvailableTiers)
+                                {
+                                    <option value="@t.PlanCode">@t.DisplayName</option>
+                                }
+                            </select>
+                        </div>
+                        <button type="button" class="btn btn-outline-primary" disabled="@Busy" @onclick="ChangePlanAsync">
+                            Update plan
+                        </button>
                     </div>
-                    <button type="button" class="btn btn-outline-primary" disabled="@Busy" @onclick="ChangePlanAsync">
-                        Update plan
-                    </button>
                 </div>
             </div>
-        </div>
+        }
+        else
+        {
+            <div class="col-lg-6">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body">
+                        <h2 class="h5">Your subscription</h2>
+                        <p class="text-secondary small mb-0">
+                            ScamAlert offers one family plan at <strong>$7.99 per month</strong>. Use “Manage payment &amp; invoices” to update your card or cancel.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        }
     </div>
 }
 

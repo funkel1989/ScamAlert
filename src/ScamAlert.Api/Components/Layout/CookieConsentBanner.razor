@@ -1,0 +1,54 @@
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@inject ProtectedLocalStorage LocalStorage
+
+@if (Visible)
+{
+    <div class="cookie-banner" role="dialog" aria-label="Cookie notice">
+        <div class="container d-flex flex-wrap align-items-center justify-content-between gap-3 py-3">
+            <p class="small mb-0">
+                We use essential cookies for sign-in and security. See our
+                <a href="/cookies">cookie notice</a> and <a href="/privacy">privacy policy</a>.
+            </p>
+            <button type="button" class="btn btn-sm btn-primary" @onclick="AcceptAsync">Got it</button>
+        </div>
+    </div>
+}
+
+@code {
+    private const string StorageKey = "scamalert.cookieConsent.v1";
+    private bool Visible { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            var stored = await LocalStorage.GetAsync<string>(StorageKey);
+            Visible = !stored.Success;
+        }
+        catch
+        {
+            Visible = true;
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task AcceptAsync()
+    {
+        try
+        {
+            await LocalStorage.SetAsync(StorageKey, "accepted");
+        }
+        catch
+        {
+            // Ignore storage errors (e.g. prerender).
+        }
+
+        Visible = false;
+    }
+}

@@ -1,0 +1,132 @@
+@page "/terms"
+@attribute [AllowAnonymous]
+
+<LegalPageShell Title="Terms of service"
+                MetaDescription="Terms governing use of ScamAlert family PC protection and alert services in the United States."
+                CanonicalPath="/terms">
+
+    <section class="mb-4">
+        <h2 class="h5">Agreement</h2>
+        <p>
+            These Terms of Service ("Terms") are a binding agreement between you and @LegalEntityName ("ScamAlert") for use of our website,
+            applications, and related services (the "Service"). If you accept on behalf of an organization, you represent that you have authority
+            to bind that organization.
+        </p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5">The Service</h2>
+        <p>
+            ScamAlert helps account holders monitor selected Windows computers for certain inbound remote-access activity and notify trusted
+            contacts, often by SMS. The Service is an <strong>aid</strong> for families—it is not a guarantee of security, does not prevent all
+            fraud, and is not professional IT, legal, or emergency services.
+        </p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5">Eligibility and account</h2>
+        <ul>
+            <li>You must be at least 18 years old and able to form a binding contract.</li>
+            <li>You must provide accurate registration information and keep credentials secure.</li>
+            <li>You are responsible for activity under your account.</li>
+        </ul>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5">Protecting someone else's computer</h2>
+        <p>
+            You may only install software on devices you own or where you have <strong>clear permission</strong> from the user or owner.
+            You represent that contacts you add for SMS alerts have agreed to receive security messages from your account. You will not use the
+            Service to harass, stalk, or monitor individuals without consent.
+        </p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5">Subscriptions and payment</h2>
+        <p>
+            Paid plans are billed in U.S. dollars through Stripe (or successor processors). Fees renew automatically until canceled in accordance
+            with your plan and Stripe settings. Prices may change with notice as required by law. Taxes may apply. Refunds are provided only where
+            required by law or expressly stated in writing by ScamAlert.
+        </p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5">Acceptable use</h2>
+        <p>You agree not to:</p>
+        <ul>
+            <li>Violate law or third-party rights;</li>
+            <li>Probe or disrupt the Service without authorization;</li>
+            <li>Reverse engineer the Service except where permitted by law;</li>
+            <li>Resell the Service without our written consent;</li>
+            <li>Submit false alerts or abuse notification systems.</li>
+        </ul>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5">Third-party services</h2>
+        <p>
+            The Service integrates with third parties (for example Stripe, Twilio, cloud hosts). Their terms and privacy practices apply to their
+            services. We are not responsible for third-party outages or acts.
+        </p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5">Disclaimer of warranties</h2>
+        <p class="text-uppercase small">
+            THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE." TO THE MAXIMUM EXTENT PERMITTED BY LAW, SCAMALERT DISCLAIMS ALL WARRANTIES,
+            EXPRESS OR IMPLIED, INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. WE DO NOT WARRANT THAT THE
+            SERVICE WILL DETECT EVERY THREAT OR PREVENT HARM.
+        </p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5">Limitation of liability</h2>
+        <p class="text-uppercase small">
+            TO THE MAXIMUM EXTENT PERMITTED BY LAW, SCAMALERT AND ITS SUPPLIERS WILL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL,
+            CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR FOR LOSS OF PROFITS, DATA, GOODWILL, OR PERSONAL INJURY, ARISING FROM OR RELATED TO THE SERVICE,
+            EVEN IF ADVISED OF THE POSSIBILITY. OUR TOTAL LIABILITY FOR ANY CLAIM ARISING FROM THE SERVICE IN ANY 12-MONTH PERIOD WILL NOT EXCEED
+            THE GREATER OF (A) AMOUNTS YOU PAID US FOR THE SERVICE IN THAT PERIOD OR (B) ONE HUNDRED U.S. DOLLARS ($100).
+        </p>
+        <p>
+            Some jurisdictions do not allow certain limitations; in those cases our liability is limited to the fullest extent permitted by law.
+        </p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5">Indemnity</h2>
+        <p>
+            You will defend and indemnify ScamAlert against claims arising from your misuse of the Service, violation of these Terms, or lack of
+            permission to monitor devices or message contacts you added.
+        </p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5">Termination</h2>
+        <p>
+            You may stop using the Service by canceling your subscription and uninstalling software. We may suspend or terminate access for breach,
+            risk to others, or legal requirements. Sections that by nature should survive will survive termination.
+        </p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5">Governing law</h2>
+        <p>
+            These Terms are governed by the laws of the State of Delaware, United States, without regard to conflict-of-law rules, except where
+            mandatory consumer protections in your state apply. Exclusive venue for disputes subject to this choice lies in state or federal courts
+            located in Delaware, unless applicable law requires otherwise.
+        </p>
+    </section>
+
+    <section class="mb-4">
+        <h2 class="h5">Contact</h2>
+        <p>Questions about these Terms: <a href="mailto:@SupportEmail">@SupportEmail</a>.</p>
+    </section>
+
+</LegalPageShell>
+
+@inject IOptions<WebSiteOptions> WebOptions
+
+@code {
+    private string LegalEntityName => WebOptions.Value.LegalEntityName;
+    private string SupportEmail => WebOptions.Value.SupportEmail;
+}

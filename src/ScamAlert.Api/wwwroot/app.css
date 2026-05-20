@@ -1,3 +1,98 @@
+:root {
+  --sa-primary: #0d6b6e;
+  --sa-primary-dark: #094d4f;
+  --sa-accent: #c45c26;
+  --sa-muted-bg: #f4f7f8;
+}
+
 body {
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #1a1a1a;
+}
+
+a {
+  color: var(--sa-primary);
+}
+
+a:hover {
+  color: var(--sa-primary-dark);
+}
+
+.btn-primary {
+  --bs-btn-bg: var(--sa-primary);
+  --bs-btn-border-color: var(--sa-primary);
+  --bs-btn-hover-bg: var(--sa-primary-dark);
+  --bs-btn-hover-border-color: var(--sa-primary-dark);
+}
+
+.text-sa-accent {
+  color: var(--sa-accent);
+}
+
+.hero-sa {
+  padding-top: 0.5rem;
+}
+
+.hero-card {
+  background: linear-gradient(145deg, #fff 0%, var(--sa-muted-bg) 100%);
+}
+
+.sa-muted-panel {
+  background: var(--sa-muted-bg);
+}
+
+.sa-checklist {
+  padding-left: 1.1rem;
+}
+
+.sa-checklist li {
+  margin-bottom: 0.5rem;
+}
+
+.step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  background: var(--sa-primary);
+  color: #fff;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+.sa-steps li {
+  margin-bottom: 1rem;
+}
+
+.legal-doc h2 {
+  margin-top: 1.5rem;
+}
+
+.legal-doc h2:first-of-type {
+  margin-top: 0;
+}
+
+.site-footer a {
+  text-decoration: none;
+}
+
+.site-footer a:hover {
+  text-decoration: underline;
+}
+
+.cookie-banner {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #fff;
+  border-top: 1px solid #dee2e6;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
+  z-index: 1050;
+}
+
+main.container {
+  padding-bottom: 5rem;
 }

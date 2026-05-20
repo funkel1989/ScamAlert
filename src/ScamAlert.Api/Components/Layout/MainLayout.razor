@@ -10,7 +10,6 @@
     <main class="container py-4 flex-grow-1">
         @Body
     </main>
-    <footer class="border-top py-3 text-center text-muted small">
-        <div class="container">ScamAlert helps families respond when remote access looks suspicious.</div>
-    </footer>
+    <SiteFooter />
+    <CookieConsentBanner @rendermode="new InteractiveServerRenderMode(prerender: false)" />
 </div>

@@ -26,4 +26,13 @@ public sealed class BillingTierOptions
     public string StripePriceId { get; set; } = string.Empty;
 
     public string DisplayName { get; set; } = string.Empty;
+
+    /// <summary>Short line for pricing cards (marketing).</summary>
+    public string? MarketingSummary { get; set; }
+
+    /// <summary>Displayed price label, e.g. "Billed monthly in USD".</summary>
+    public string? MonthlyPriceLabel { get; set; }
+
+    /// <summary>Bullet features for pricing page.</summary>
+    public List<string> MarketingFeatures { get; set; } = [];
 }

@@ -17,35 +17,15 @@ This branch also includes the native Windows Filtering Platform (WFP) monitor an
 - [ ] Twilio voice-call workflow and richer retry policy.
 - [ ] Signed/packaged production WFP monitor installer.
 
-## Marketing and signup (what exists vs. what is missing)
+## Production prep (deploy last)
 
-The landing and self-serve signup UI live in **`ScamAlert.Api`** as Blazor Server pages (not a separate web project): **`/`** (home), **`/signup`**, **`/signup/success`**, under `src/ScamAlert.Api/Components/Pages/`. They use the same host and port as the API.
+Phases **2** and **4** are done locally. **Phase 3** pairing (portal codes + broker `ProgramData` config) and **Phase 5** hardening are in progress. **Azure deploy (Phase 1)** is intentionally last for the family beta.
 
-The items below are **not done yet** but are useful to track for a production-ready funnel:
+See **[docs/production-prep.md](docs/production-prep.md)** and **[docs/go-live-plan.md](docs/go-live-plan.md)**.
 
-### Product and UX
+**Desktop MSI:** `.\scripts\build-desktop-installer.ps1` → installs Broker (Windows service) + Tray. See [installer/README.md](installer/README.md).
 
-- **Plan selection**: replace the free-text plan code field with a clear plan or pricing chooser wired to billing tiers (names, prices, short feature list).
-- **Post-checkout experience**: stronger success state (what happens next), optional **email verification** if you add it, and an obvious **installer download** path after payment (today users are pointed toward signing in first).
-- **Trust and compliance**: **Privacy policy**, **Terms of service**, and **cookie** notices linked from the footer and/or checkout-adjacent flows.
-- **Support**: **Help**, **Contact**, or support email link for users stuck at signup or Stripe.
-
-### Marketing content
-
-- **Beyond one hero block**: dedicated sections or pages for **pricing**, **FAQ**, **how it works** (steps), product **screenshots** or diagrams, and **social proof** (testimonials, quotes, or logos) if you want a fuller commercial site.
-
-### SEO and sharing
-
-- **Meta and social previews**: per-route **meta description**, Open Graph / Twitter cards, and **canonical URLs** for `/` and `/signup` (today the shell title is generic).
-
-### Visual design and brand
-
-- **Distinct visual identity**: today the UI is mostly **Bootstrap defaults** plus minimal custom CSS (`wwwroot/app.css`); a custom palette, typography, and layout polish would differentiate the brand from “stock Bootstrap.”
-
-### Architecture and local development
-
-- **Separate marketing site**: if you need a different deployable or domain only for marketing, that would be a **new project**; today marketing and API are intentionally combined in `ScamAlert.Api`.
-- **Aspire orchestration**: the AppHost starts **API + SQL Server** only; **Broker** and **Tray** are still started separately for an end-to-end desktop + cloud demo (see [Launch With Visual Studio](#launch-with-visual-studio) and [Launch The Simulator Path](#launch-the-simulator-path)).
+**Pair a PC:** install MSI → `/devices` → **Pair PC** → `scripts/configure-broker-from-pairing-code.ps1` on that machine (installer pairing UI planned next).
 
 ## Projects
 
@@ -94,7 +74,7 @@ After signup or login, use:
 - `/alerts` — recent alert history
 - `/forgot-password` / `/reset-password` — password reset (emails log to console without SendGrid)
 
-Signup returns device keys in the API response and on `/signup/success` (session). Welcome email content is logged when `Email:SendGridApiKey` is empty.
+Signup returns device keys in the API response and on `/signup/success` (session). Prefer **Pair PC** on `/devices` for new machines. Welcome email content is logged when `Email:SendGridApiKey` is empty.
 
 ## Azure deployment (Phase 1)
 

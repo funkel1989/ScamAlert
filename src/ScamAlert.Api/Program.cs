@@ -12,6 +12,7 @@ using ScamAlert.Api.Services.Audit;
 using ScamAlert.Api.Services.Auth;
 using ScamAlert.Api.Services.Notifications;
 using ScamAlert.Api.Services.Email;
+using ScamAlert.Api.Services.Pairing;
 using ScamAlert.Api.Services.Portal;
 using ScamAlert.Api.Services.Signup;
 using ScamAlert.Api.Services.Stripe;
@@ -31,21 +32,25 @@ builder.Services.AddDbContext<ScamAlertDbContext>(options =>
             "Connection string 'ScamAlertDb' is not configured. Set ConnectionStrings:ScamAlertDb or run under Aspire.");
     options.UseSqlServer(connectionString);
 });
-builder.Services.AddDbContextFactory<ScamAlertDbContext>(options =>
-{
-    var connectionString = builder.Configuration.GetConnectionString("ScamAlertDb")
-        ?? throw new InvalidOperationException(
-            "Connection string 'ScamAlertDb' is not configured. Set ConnectionStrings:ScamAlertDb or run under Aspire.");
-    options.UseSqlServer(connectionString);
-});
+builder.Services.AddDbContextFactory<ScamAlertDbContext>(
+    options =>
+    {
+        var connectionString = builder.Configuration.GetConnectionString("ScamAlertDb")
+            ?? throw new InvalidOperationException(
+                "Connection string 'ScamAlertDb' is not configured. Set ConnectionStrings:ScamAlertDb or run under Aspire.");
+        options.UseSqlServer(connectionString);
+    },
+    ServiceLifetime.Scoped);
 builder.Services.Configure<AlertsOptions>(builder.Configuration.GetSection(AlertsOptions.SectionName));
 builder.Services.Configure<StripeOptions>(builder.Configuration.GetSection(StripeOptions.SectionName));
 builder.Services.Configure<WebSiteOptions>(builder.Configuration.GetSection(WebSiteOptions.SectionName));
 builder.Services.Configure<BillingOptions>(builder.Configuration.GetSection(BillingOptions.SectionName));
+builder.Services.Configure<PairingOptions>(builder.Configuration.GetSection(PairingOptions.SectionName));
 builder.Services.AddSingleton<IBillingTierCatalog, BillingTierCatalog>();
 builder.Services.AddScoped<ISignupService, SignupService>();
 builder.Services.AddScoped<ICustomerPortalContext, CustomerPortalContext>();
 builder.Services.AddScoped<IPortalDeviceService, PortalDeviceService>();
+builder.Services.AddScoped<IDevicePairingService, DevicePairingService>();
 builder.Services.AddScoped<IPortalContactService, PortalContactService>();
 builder.Services.AddScoped<IPasswordResetService, PasswordResetService>();
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.SectionName));
@@ -73,6 +78,7 @@ builder.Services.AddHostedService<AuthBootstrapHostedService>();
 if (!builder.Environment.IsEnvironment("Testing"))
 {
     builder.Services.AddHostedService<AlertEscalationWorker>();
+    builder.Services.AddHostedService<ProductionConfigurationValidator>();
 }
 
 builder.Services.Configure<TwilioOptions>(builder.Configuration.GetSection(TwilioOptions.SectionName));

@@ -12,6 +12,17 @@ using ScamAlert.Core.Signals;
 
 var builder = Host.CreateApplicationBuilder(args);
 
+builder.Services.AddWindowsService(options =>
+{
+    options.ServiceName = "ScamAlertBroker";
+});
+
+var programDataConfig = Path.Combine(
+    Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+    "ScamAlert",
+    "broker.appsettings.json");
+builder.Configuration.AddJsonFile(programDataConfig, optional: true, reloadOnChange: true);
+
 builder.Services.Configure<CloudAlertOptions>(builder.Configuration.GetSection(CloudAlertOptions.SectionName));
 builder.Services.AddSingleton<ICloudAlertEnqueueSource, CloudAlertEnqueueSource>();
 builder.Services.AddSingleton<FileBackedAlertDeduper>(sp => new FileBackedAlertDeduper(

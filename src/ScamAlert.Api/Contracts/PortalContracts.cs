@@ -49,3 +49,13 @@ public sealed record ProvisionedDeviceResponse(
 public sealed record ForgotPasswordRequest(string Email);
 
 public sealed record ResetPasswordRequest(string Token, string NewPassword);
+
+public sealed record DevicePairingCodeResponse(string Code, DateTimeOffset ExpiresUtc);
+
+public sealed record DevicePairingRedeemRequest(string Code);
+
+public sealed record DevicePairingRedeemResponse(
+    string ApiBaseUrl,
+    string ExternalDeviceId,
+    string DeviceIngestApiKey,
+    string DeviceName);

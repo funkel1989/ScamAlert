@@ -22,6 +22,18 @@ else
         <div class="alert alert-info" role="status">@Banner</div>
     }
 
+    @if (ActivePairingCode is not null)
+    {
+        <div class="alert alert-primary">
+            <strong>Pairing code (expires @ActivePairingCode.ExpiresUtc.ToLocalTime().ToString("g"))</strong>
+            <div class="mt-2 font-monospace fs-4 user-select-all">@ActivePairingCode.Code</div>
+            <p class="small mb-0 mt-2">
+                On the protected PC (after the <a href="@InstallerUrl" target="_blank" rel="noopener">desktop installer</a>), run <code>scripts\configure-broker-from-pairing-code.ps1</code>.
+                The code is single-use and expires in about 15 minutes.
+            </p>
+        </div>
+    }
+
     @if (RevealedKey is not null)
     {
         <div class="alert alert-warning">
@@ -63,7 +75,11 @@ else
                         <td>@d.DeviceName</td>
                         <td class="font-monospace small">@d.ExternalDeviceId</td>
                         <td>@(d.HasIngestKey ? "Configured" : "—")</td>
-                        <td>
+                        <td class="text-nowrap">
+                            <button type="button" class="btn btn-sm btn-outline-primary me-1" disabled="@Busy"
+                                    @onclick="() => CreatePairingCodeAsync(d.Id)">
+                                Pair PC
+                            </button>
                             <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@Busy"
                                     @onclick="() => RotateKeyAsync(d.Id)">
                                 Rotate key
@@ -77,12 +93,14 @@ else
 
     <div class="card border-0 bg-light">
         <div class="card-body small text-secondary">
-            <p class="mb-2">Configure the Windows broker (<code>appsettings.json</code> or environment):</p>
+            <p class="mb-2"><strong>Recommended:</strong> click <em>Pair PC</em> above and run the pairing script on the Windows machine. It writes config to:</p>
+            <p class="font-monospace small mb-2">%ProgramData%\ScamAlert\broker.appsettings.json</p>
+            <p class="mb-2">Manual broker settings (<code>appsettings.json</code> or environment) still work:</p>
             <ul class="mb-0">
                 <li><code>CloudAlerts:Enabled</code> = true</li>
                 <li><code>CloudAlerts:BaseUrl</code> = your API URL</li>
                 <li><code>CloudAlerts:ExternalDeviceId</code> = external id from the table</li>
-                <li><code>CloudAlerts:DeviceIngestApiKey</code> = key shown when you add or rotate</li>
+                <li><code>CloudAlerts:DeviceIngestApiKey</code> = key from pairing, add, or rotate</li>
             </ul>
             <a class="btn btn-link btn-sm ps-0 mt-2" href="@InstallerUrl" target="_blank" rel="noopener">Installer download</a>
         </div>
@@ -91,14 +109,17 @@ else
 
 @using ScamAlert.Api.Contracts
 @using ScamAlert.Api.Services.Portal
+@using ScamAlert.Api.Services.Pairing
 @using Microsoft.Extensions.Options
 @using ScamAlert.Api.Services.Web
 @inject IPortalDeviceService DeviceService
+@inject IDevicePairingService PairingService
 @inject IOptions<WebSiteOptions> WebOptions
 
 @code {
     private List<PortalDeviceResponse> DeviceList { get; } = [];
     private PortalDeviceCreatedResponse? RevealedKey { get; set; }
+    private DevicePairingCodeResponse? ActivePairingCode { get; set; }
     private string NewDeviceName { get; set; } = "Family PC";
     private string? Banner { get; set; }
     private bool Busy { get; set; }
@@ -143,11 +164,33 @@ else
         }
     }
 
+    private async Task CreatePairingCodeAsync(Guid deviceId)
+    {
+        Busy = true;
+        Banner = null;
+        ActivePairingCode = null;
+        RevealedKey = null;
+        try
+        {
+            ActivePairingCode = await PairingService.CreateCodeAsync(CustomerId!.Value, deviceId, default);
+            Banner = ActivePairingCode is null ? "Device not found." : "Enter this code on the PC you are protecting.";
+        }
+        catch (Exception ex)
+        {
+            Banner = ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
     private async Task RotateKeyAsync(Guid deviceId)
     {
         Busy = true;
         Banner = null;
         RevealedKey = null;
+        ActivePairingCode = null;
         try
         {
             RevealedKey = await DeviceService.RotateIngestKeyAsync(CustomerId!.Value, deviceId, default);

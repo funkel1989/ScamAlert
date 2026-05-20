@@ -112,7 +112,7 @@ public sealed class PortalManagementTests
         Assert.False(string.IsNullOrWhiteSpace(tokenRow.TokenHash));
     }
 
-    private static async Task<Guid> SignupCustomerAsync(
+    internal static async Task<Guid> SignupCustomerAsync(
         TestWebApplicationFactory factory,
         string email,
         string externalDeviceId)

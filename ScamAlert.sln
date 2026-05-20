@@ -35,6 +35,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ScamAlert.AppHost", "src\Sc
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ScamAlert.ServiceDefaults", "src\ScamAlert.ServiceDefaults\ScamAlert.ServiceDefaults.csproj", "{B8EB1A3A-88B4-4628-91F5-5D5C88ABC0E3}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "installer", "installer", "{1860D2E4-5C43-71D5-59A5-599A4DE1DF67}"
+EndProject
+Project("{B7DD6F7E-DEF8-4E67-B5B7-07EF123DB6F0}") = "ScamAlert.DesktopInstaller", "installer\ScamAlert.DesktopInstaller\ScamAlert.DesktopInstaller.wixproj", "{C3A3B5A5-0FA5-48CF-A01C-0E129D3DA47D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -201,6 +205,12 @@ Global
 		{B8EB1A3A-88B4-4628-91F5-5D5C88ABC0E3}.Release|x64.Build.0 = Release|Any CPU
 		{B8EB1A3A-88B4-4628-91F5-5D5C88ABC0E3}.Release|x86.ActiveCfg = Release|Any CPU
 		{B8EB1A3A-88B4-4628-91F5-5D5C88ABC0E3}.Release|x86.Build.0 = Release|Any CPU
+		{C3A3B5A5-0FA5-48CF-A01C-0E129D3DA47D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C3A3B5A5-0FA5-48CF-A01C-0E129D3DA47D}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C3A3B5A5-0FA5-48CF-A01C-0E129D3DA47D}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C3A3B5A5-0FA5-48CF-A01C-0E129D3DA47D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C3A3B5A5-0FA5-48CF-A01C-0E129D3DA47D}.Release|x64.ActiveCfg = Release|Any CPU
+		{C3A3B5A5-0FA5-48CF-A01C-0E129D3DA47D}.Release|x86.ActiveCfg = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -219,5 +229,6 @@ Global
 		{568201B0-DDE5-426B-8269-2C1713314EFA} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{F2ADC8F8-DB41-4EFE-B600-993F452B4DCE} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{B8EB1A3A-88B4-4628-91F5-5D5C88ABC0E3} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{C3A3B5A5-0FA5-48CF-A01C-0E129D3DA47D} = {1860D2E4-5C43-71D5-59A5-599A4DE1DF67}
 	EndGlobalSection
 EndGlobal

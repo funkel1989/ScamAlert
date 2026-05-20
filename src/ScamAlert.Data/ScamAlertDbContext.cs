@@ -13,6 +13,7 @@ public sealed class ScamAlertDbContext(DbContextOptions<ScamAlertDbContext> opti
     public DbSet<NotificationAttempt> NotificationAttempts => Set<NotificationAttempt>();
     public DbSet<AuthUserCredential> AuthUserCredentials => Set<AuthUserCredential>();
     public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
+    public DbSet<DevicePairingCode> DevicePairingCodes => Set<DevicePairingCode>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -119,6 +120,18 @@ public sealed class ScamAlertDbContext(DbContextOptions<ScamAlertDbContext> opti
             entity.Property(x => x.TokenHash).HasMaxLength(128);
             entity.HasIndex(x => x.TokenHash);
             entity.HasIndex(x => new { x.Username, x.IsUsed, x.ExpiresUtc });
+        });
+
+        modelBuilder.Entity<DevicePairingCode>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.CodeHash).HasMaxLength(500);
+            entity.HasIndex(x => new { x.DeviceId, x.RedeemedUtc, x.ExpiresUtc });
+
+            entity.HasOne(x => x.Device)
+                .WithMany()
+                .HasForeignKey(x => x.DeviceId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

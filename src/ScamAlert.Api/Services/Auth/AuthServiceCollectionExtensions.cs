@@ -64,6 +64,7 @@ public static class AuthServiceCollectionExtensions
                         });
                 });
                 AddBillingRateLimitPolicies(rateLimiterOptions);
+                AddSetupRedeemRateLimitPolicy(rateLimiterOptions);
             });
             return services;
         }
@@ -181,8 +182,26 @@ public static class AuthServiceCollectionExtensions
                     });
             });
             AddBillingRateLimitPolicies(rateLimiterOptions);
+            AddSetupRedeemRateLimitPolicy(rateLimiterOptions);
         });
         return services;
+    }
+
+    private static void AddSetupRedeemRateLimitPolicy(RateLimiterOptions rateLimiterOptions)
+    {
+        rateLimiterOptions.AddPolicy("setup-redeem", context =>
+        {
+            var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            return RateLimitPartition.GetFixedWindowLimiter(
+                partitionKey: ip,
+                factory: _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 10,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true
+                });
+        });
     }
 
     private static void AddBillingRateLimitPolicies(RateLimiterOptions rateLimiterOptions)

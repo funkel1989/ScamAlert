@@ -44,13 +44,25 @@ else
             </div>
         </div>
     </div>
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h2 class="h5">Get protection running</h2>
+            <ol class="mb-3 small">
+                <li>Confirm <a href="/contacts">trusted contacts</a> and SMS numbers.</li>
+                <li>Add or select a PC under <a href="/devices">protected devices</a>.</li>
+                <li>Click <strong>Pair PC</strong> for a one-time code (about 15 minutes).</li>
+                <li>On that Windows machine, run the <a href="@InstallerUrl" target="_blank" rel="noopener">desktop installer</a>, then apply the pairing code (script on the devices page).</li>
+            </ol>
+            <a class="btn btn-primary me-2" href="/devices">Pair a PC</a>
+            <a class="btn btn-outline-secondary" href="@InstallerUrl" target="_blank" rel="noopener">Installer download</a>
+        </div>
+    </div>
     <div class="card shadow-sm">
         <div class="card-body">
             <h2 class="h5">Subscription</h2>
             <p class="mb-2"><span class="text-muted">Plan</span> <strong>@Customer.PlanCode</strong></p>
             <p class="mb-3"><span class="text-muted">Status</span> <strong>@Customer.SubscriptionStatus</strong></p>
-            <a class="btn btn-primary me-2" href="/billing">Billing</a>
-            <a class="btn btn-outline-secondary" href="@InstallerUrl" target="_blank" rel="noopener">Installer download</a>
+            <a class="btn btn-outline-primary" href="/billing">Billing</a>
         </div>
     </div>
 }

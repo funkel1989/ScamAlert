@@ -7,8 +7,15 @@
 <div class="py-5">
     <h1 class="h3 mb-3 text-center">You are almost there</h1>
     <p class="text-secondary col-lg-8 mx-auto text-center">
-        If you completed payment, your subscription activates in a few seconds. Sign in to manage contacts, devices, and billing.
+        If you completed payment, your subscription activates in a few seconds. Sign in, then pair each protected PC from the devices page.
     </p>
+    <div class="col-lg-8 mx-auto mt-3">
+        <ol class="small text-secondary mb-0">
+            <li>Log in and review <a href="/contacts">trusted contacts</a>.</li>
+            <li>Open <a href="/devices">protected devices</a> and click <strong>Pair PC</strong>.</li>
+            <li>On the Windows PC, install Broker + Tray and apply the pairing code (see devices page for the script).</li>
+        </ol>
+    </div>
 
     @if (ProvisionedDevices is { Count: > 0 })
     {

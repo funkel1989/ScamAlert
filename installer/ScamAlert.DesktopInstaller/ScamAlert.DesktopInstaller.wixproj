@@ -1,0 +1,32 @@
+<Project Sdk="WixToolset.Sdk/5.0.2">
+
+  <PropertyGroup>
+    <OutputName>ScamAlert-Desktop</OutputName>
+    <InstallerPlatform>x64</InstallerPlatform>
+    <ProductVersion>0.1.0.0</ProductVersion>
+    <BrokerPublishDir>$(MSBuildThisFileDirectory)..\..\artifacts\installer\broker\</BrokerPublishDir>
+    <TrayPublishDir>$(MSBuildThisFileDirectory)..\..\artifacts\installer\tray\</TrayPublishDir>
+    <DefineConstants>BrokerPublishDir=$(BrokerPublishDir);TrayPublishDir=$(TrayPublishDir);ProductVersion=$(ProductVersion)</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Util.wixext" Version="5.0.2" />
+  </ItemGroup>
+
+  <Target Name="PublishDesktopApps" BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <_PublishProps>Configuration=$(Configuration);RuntimeIdentifier=win-x64;SelfContained=true;PublishSingleFile=false;PublishReadyToRun=true</_PublishProps>
+    </PropertyGroup>
+    <MSBuild
+      Projects="$(MSBuildThisFileDirectory)..\..\src\ScamAlert.Broker\ScamAlert.Broker.csproj"
+      Targets="Publish"
+      Properties="$(_PublishProps);PublishDir=$(BrokerPublishDir)" />
+    <MSBuild
+      Projects="$(MSBuildThisFileDirectory)..\..\src\ScamAlert.Tray\ScamAlert.Tray.csproj"
+      Targets="Publish"
+      Properties="$(_PublishProps);PublishDir=$(TrayPublishDir)" />
+    <Error Condition="!Exists('$(BrokerPublishDir)ScamAlert.Broker.exe')" Text="Broker publish output missing at $(BrokerPublishDir)" />
+    <Error Condition="!Exists('$(TrayPublishDir)ScamAlert.Tray.exe')" Text="Tray publish output missing at $(TrayPublishDir)" />
+  </Target>
+
+</Project>

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using ScamAlert.Api.Contracts;
+using ScamAlert.Api.Services.Pairing;
 using ScamAlert.Api.Services.Portal;
 
 namespace ScamAlert.Api.Controllers;
@@ -7,7 +8,8 @@ namespace ScamAlert.Api.Controllers;
 [Route("api/portal/devices")]
 public sealed class PortalDevicesController(
     ICustomerPortalContext portalContext,
-    IPortalDeviceService deviceService) : BaseApiController
+    IPortalDeviceService deviceService,
+    IDevicePairingService pairingService) : BaseApiController
 {
     [HttpGet]
     public async Task<IActionResult> List(CancellationToken cancellationToken)
@@ -57,5 +59,25 @@ public sealed class PortalDevicesController(
 
         var rotated = await deviceService.RotateIngestKeyAsync(customerId.Value, id, cancellationToken);
         return rotated is null ? NotFound() : Ok(rotated);
+    }
+
+    [HttpPost("{id:guid}/pairing-code")]
+    public async Task<IActionResult> CreatePairingCode(Guid id, CancellationToken cancellationToken)
+    {
+        var customerId = await portalContext.TryGetSingleCustomerIdAsync(User, cancellationToken);
+        if (customerId is null)
+        {
+            return BadRequest(new { error = "Portal devices require a login linked to exactly one organization." });
+        }
+
+        try
+        {
+            var code = await pairingService.CreateCodeAsync(customerId.Value, id, cancellationToken);
+            return code is null ? NotFound() : Ok(code);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 }

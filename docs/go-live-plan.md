@@ -5,7 +5,7 @@
 - **Protection:** Broker + Tray + cloud SMS alerts — **no kernel block**
 - **Hosting:** Azure App Service (Linux) + Azure SQL + Key Vault + Blob + App Insights
 - **Web:** Marketing + portal in `ScamAlert.Api` (single deployable)
-- **Desktop pairing:** One-time code from portal → script/installer writes `%ProgramData%\ScamAlert\broker.appsettings.json`
+- **Desktop pairing:** One-time code from portal → installer wizard writes `%ProgramData%\ScamAlert\broker.appsettings.json`
 - **Email:** SendGrid — welcome, password reset
 - **Timeline:** ~6 weeks; beta = a few family members; small team
 - **Pricing:** One plan — **$7.99/month** (plan code `pro`, “Family protection”)
@@ -16,14 +16,12 @@
 |-------|--------|--------|
 | **1 — Azure foundation** | Code complete — **deploy last (beta)** | Bicep, CI/CD, staging deploy |
 | **2 — Portal & onboarding** | Done (local) | Devices, contacts CRUD, email, keys, portal UI |
-| **3 — Windows installer** | Done (local) | MSI + pairing wizard; code signing optional |
+| **3 — Windows installer** | Done (local) | MSI + Configurator; code signing optional |
 | **4 — Marketing & compliance** | Done (local) | Pricing, legal, SEO, signup consents |
-| **5 — Beta hardening** | In progress | Health checks, production validator, runbooks |
+| **5 — Beta hardening** | Done (local) | Health checks, production validator, runbooks |
 | **6 — Kernel driver** | Deferred | Not in MVP |
 
-**Current focus:** Finish Phase 3 (MSI) and Phase 5 on `main`, then Phase 1 deploy for beta.
-
-See **[production-prep.md](production-prep.md)** for the pre-deploy checklist.
+**What to do next:** follow **[next-steps.md](next-steps.md)** — local test → Stripe/SendGrid/Twilio → Azure deploy → family beta.
 
 ## Phase 1 deliverables
 
@@ -34,13 +32,14 @@ See **[production-prep.md](production-prep.md)** for the pre-deploy checklist.
 - [x] Azure Monitor OpenTelemetry in `ScamAlert.ServiceDefaults`
 - [x] `appsettings.Staging.json`
 
-**Deploy when ready for beta:** see `infra/README.md`, replace JWT secret in Key Vault, configure GitHub OIDC, smoke test `/api/health`.
+**Deploy when ready for beta:** see [infra/README.md](../infra/README.md), [next-steps.md](next-steps.md).
 
-## Phase 3 deliverables (partial)
+## Phase 3 deliverables
 
 - [x] Device pairing codes (portal + `POST /api/setup/redeem`)
 - [x] `scripts/configure-broker-from-pairing-code.ps1`
 - [x] Broker loads `ProgramData\ScamAlert\broker.appsettings.json`
-- [x] MSI packaging Broker (Windows service) + Tray (`installer/`, `scripts/build-desktop-installer.ps1`)
-- [ ] Code-signed MSI for production SmartScreen trust
-- [x] Installer pairing UI (`ScamAlert.Configurator` — redeem, write config, launch after MSI)
+- [x] MSI packaging Broker (Windows service) + Tray
+- [x] Installer pairing UI (`ScamAlert.Configurator`)
+- [x] Bake optional `DefaultApiBaseUrl` at MSI build
+- [ ] Code-signed MSI for production SmartScreen trust (optional)

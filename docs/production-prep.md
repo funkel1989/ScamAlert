@@ -1,8 +1,26 @@
 # Production prep (before Azure beta deploy)
 
-Deploy to Azure is the **last step** for the family beta. Complete the items below on `main` first, then follow [infra/README.md](../infra/README.md).
+Deploy to Azure is the **last step** for the family beta.
 
-## Phase 3 — Desktop install path (in progress)
+**Canonical checklist:** [next-steps.md](next-steps.md) — local testing, integrations, deploy, and beta.
+
+---
+
+## Code status (MVP)
+
+Application features for the locked MVP are **implemented in the repo**. Remaining work is validation, third-party accounts, configuration, and hosting — not a large new coding phase.
+
+| Phase | Status |
+|-------|--------|
+| Portal & onboarding | Done |
+| Marketing & $7.99 billing | Done |
+| Pairing + desktop MSI + Configurator wizard | Done |
+| Azure foundation (Bicep, CI) | Code complete — not deployed |
+| Beta hardening (health, config validator) | Done |
+
+---
+
+## Phase 3 — Desktop install path
 
 | Item | Status |
 |------|--------|
@@ -11,17 +29,22 @@ Deploy to Azure is the **last step** for the family beta. Complete the items bel
 | `scripts/configure-broker-from-pairing-code.ps1` | Done |
 | Broker reads `%ProgramData%\ScamAlert\broker.appsettings.json` | Done |
 | MSI (Broker service + Tray) | Done — `scripts/build-desktop-installer.ps1` |
-| Code-signed MSI | Planned (beta can use unsigned) |
 | Installer pairing UI (`ScamAlert.Configurator`) | Done |
+| Bake `ApiBaseUrl` at MSI build (`-ApiBaseUrl`) | Done |
+| Code-signed MSI | Optional before wider distribution |
 
-## Phase 5 — Hardening (in progress)
+---
+
+## Phase 5 — Hardening
 
 | Item | Status |
 |------|--------|
 | `/api/health` includes database check | Done |
 | Production startup config validator (logs errors) | Done |
 | `appsettings.Production.json` baseline | Done |
-| Operational runbook | This doc + [go-live-plan.md](go-live-plan.md) |
+| Operational runbook | [next-steps.md](next-steps.md) + this doc |
+
+---
 
 ## Configuration checklist (production / staging)
 
@@ -38,9 +61,13 @@ Set via App Service settings or Key Vault references:
 - `Twilio__*` — SMS for alerts
 - `APPLICATIONINSIGHTS_CONNECTION_STRING` — optional until deploy
 
-Local testing without Stripe: keep `Stripe__SkipPaymentForDevelopment=true` in Development only.
+Local testing without Stripe: keep `Stripe__SkipPaymentForDevelopment=true` in **Development** only.
+
+---
 
 ## Smoke tests (local, before deploy)
+
+See [next-steps.md](next-steps.md) for the full walkthrough. Quick commands:
 
 ```powershell
 dotnet test ScamAlert.sln -c Release
@@ -48,26 +75,18 @@ dotnet run --project src/ScamAlert.Api/ScamAlert.Api.csproj
 curl http://localhost:5000/api/health
 ```
 
-Pairing flow:
-
-1. Sign up / log in → `/devices` → **Pair PC**.
-2. On the Windows machine (elevated PowerShell):
-
-```powershell
-.\scripts\configure-broker-from-pairing-code.ps1 -ApiBaseUrl "http://localhost:5000" -PairingCode "XXXXXXXX"
-dotnet run --project src\ScamAlert.Broker\ScamAlert.Broker.csproj
-dotnet run --project src\ScamAlert.Tray\ScamAlert.Tray.csproj
-```
-
-3. Trigger a simulator event; confirm alert appears under `/alerts`.
+---
 
 ## Deploy (beta — last)
 
 1. `infra/scripts/Deploy-Infrastructure.ps1`
 2. GitHub OIDC + `deploy-staging.yml` or manual publish
 3. `curl https://<app>/api/health` — expect `"database":"ok"`
-4. Stripe webhook URL → `https://<app>/api/webhooks/stripe`
-5. Twilio webhooks → public base URL
+4. Upload MSI to `installers` blob; set `Web__InstallerDownloadUrl`
+5. Stripe webhook → `https://<app>/api/webhooks/stripe`
+6. Twilio webhooks → public base URL
+
+---
 
 ## Legal
 

@@ -21,7 +21,9 @@ This branch also includes the native Windows Filtering Platform (WFP) monitor an
 
 Phases **2** and **4** are done locally. **Phase 3** pairing (portal codes + broker `ProgramData` config) and **Phase 5** hardening are in progress. **Azure deploy (Phase 1)** is intentionally last for the family beta.
 
-See **[docs/production-prep.md](docs/production-prep.md)** and **[docs/go-live-plan.md](docs/go-live-plan.md)**.
+**Next:** **[docs/next-steps.md](docs/next-steps.md)** — local testing, integrations, then Azure deploy.
+
+See also **[docs/production-prep.md](docs/production-prep.md)** and **[docs/go-live-plan.md](docs/go-live-plan.md)**.
 
 **Desktop MSI:** `.\scripts\build-desktop-installer.ps1` → installs Broker (Windows service) + Tray. See [installer/README.md](installer/README.md).
 

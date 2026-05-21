@@ -134,6 +134,10 @@ dotnet run --project src/ScamAlert.AppHost/ScamAlert.AppHost.csproj
 
 The AppHost injects `ConnectionStrings__ScamAlertDb` for the SQL Server database resource (`ScamAlertDb` in `AppHost.cs`). When you run the API alone, `appsettings.json` defaults to LocalDB (`ScamAlert` database on `(localdb)\mssqllocaldb`).
 
+In the Aspire dashboard, open the **api** resource and use **Scalar API** (`/scalar`) to browse and try REST endpoints, or **Website** (`/`) for the Blazor portal. OpenAPI JSON is at `/openapi/v1.json` (Development only).
+
+To call protected endpoints from Scalar, first `POST /api/auth/token` with body `{"username":"operator","password":"dev-password"}` (bootstrap user from `appsettings.Development.json`), then paste the returned JWT into Scalar’s authorize flow if you add a bearer scheme, or send `Authorization: Bearer <token>` on each request.
+
 EF Core migrations run automatically when the API starts (`Database.Migrate()`).
 
 ## Launch The Simulator Path

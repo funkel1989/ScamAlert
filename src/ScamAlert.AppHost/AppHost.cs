@@ -5,9 +5,13 @@ var sqlPassword = builder.AddParameter("sql-password", "ScamAlert_Dev_2026!", pu
 var sql = builder.AddSqlServer("sql", sqlPassword);
 var scamDb = sql.AddDatabase("ScamAlertDb");
 
-builder.AddProject<Projects.ScamAlert_Api>("api")
+var api = builder.AddProject<Projects.ScamAlert_Api>("api")
     .WithReference(scamDb)
     .WaitFor(sql)
-    .WithEnvironment("DOTNET_ENVIRONMENT", "Development");
+    .WithEnvironment("DOTNET_ENVIRONMENT", "Development")
+    .WithHttpHealthCheck("/api/health");
+
+api.WithUrl("/scalar", "Scalar API");
+api.WithUrl("/", "Website");
 
 builder.Build().Run();

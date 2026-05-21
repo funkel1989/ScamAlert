@@ -18,13 +18,22 @@ using ScamAlert.Api.Services.Signup;
 using ScamAlert.Api.Services.Stripe;
 using ScamAlert.Api.Services.Web;
 using ScamAlert.Data;
+using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 
 builder.Services.AddControllers();
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options =>
+{
+    options.AddDocumentTransformer((document, _, _) =>
+    {
+        document.Info.Title = "ScamAlert API";
+        document.Info.Description = "Family protection API. In Development, POST /api/auth/token with bootstrap credentials for JWT.";
+        return Task.CompletedTask;
+    });
+});
 builder.Services.AddDbContext<ScamAlertDbContext>(options =>
 {
     var connectionString = builder.Configuration.GetConnectionString("ScamAlertDb")
@@ -128,6 +137,11 @@ using (var scope = app.Services.CreateScope())
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.MapScalarApiReference(options =>
+    {
+        options.WithTitle("ScamAlert API");
+        options.WithOpenApiRoutePattern("/openapi/{documentName}.json");
+    });
 }
 
 if (!app.Environment.IsEnvironment("Testing"))

@@ -5,6 +5,7 @@ using ScamAlert.Api.Services.Auth;
 using ScamAlert.Api.Services.Billing;
 using ScamAlert.Api.Services.Email;
 using ScamAlert.Api.Services.Phone;
+using ScamAlert.Api.Services.Validation;
 using ScamAlert.Api.Services.Stripe;
 using ScamAlert.Api.Services.Web;
 using ScamAlert.Data;
@@ -51,10 +52,9 @@ public sealed class SignupService(
             throw new ArgumentException("At least one monitored device is required.", nameof(request));
         }
 
-        var email = request.Email.Trim();
-        if (email.Length is < 3 or > 320)
+        if (!EmailAddressValidator.TryValidate(request.Email, out var email, out var emailError))
         {
-            throw new ArgumentException("Invalid email.", nameof(request));
+            throw new ArgumentException(emailError, nameof(request));
         }
 
         if (!PasswordPolicy.TryValidate(request.Password, out var passwordError))

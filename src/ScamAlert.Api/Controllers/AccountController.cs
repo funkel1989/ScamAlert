@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using ScamAlert.Api.Contracts;
 using ScamAlert.Api.Services.Auth;
+using ScamAlert.Api.Services.Validation;
 
 namespace ScamAlert.Api.Controllers;
 
@@ -15,7 +16,12 @@ public sealed class AccountController(IPasswordResetService passwordResetService
     [EnableRateLimiting("signup")]
     public async Task<IActionResult> ForgotPassword(ForgotPasswordRequest request, CancellationToken cancellationToken)
     {
-        await passwordResetService.RequestResetAsync(request.Email, cancellationToken);
+        if (!EmailAddressValidator.TryValidate(request.Email, out var email, out var emailError))
+        {
+            return BadRequest(new { error = emailError });
+        }
+
+        await passwordResetService.RequestResetAsync(email, cancellationToken);
         return Ok(new { message = "If an account exists for that email, a reset link has been sent." });
     }
 

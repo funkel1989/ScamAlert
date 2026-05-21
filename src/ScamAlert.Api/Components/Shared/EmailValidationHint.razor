@@ -1,0 +1,30 @@
+@using ScamAlert.Api.Services.Validation
+
+@if (ShowHint)
+{
+    @if (IsValid)
+    {
+        <p class="form-text text-sa-accent mb-0">Valid email format.</p>
+    }
+    else
+    {
+        <p class="form-text text-danger mb-0">@ErrorMessage</p>
+    }
+}
+
+@code {
+    [Parameter]
+    public string? Email { get; set; }
+
+    [Parameter]
+    public bool ShowWhenEmpty { get; set; }
+
+    private bool ShowHint => ShowWhenEmpty || !string.IsNullOrWhiteSpace(Email);
+
+    private bool IsValid => EmailAddressValidator.IsValid(Email);
+
+    private string ErrorMessage =>
+        EmailAddressValidator.TryValidate(Email, out _, out var error)
+            ? string.Empty
+            : error ?? EmailAddressValidator.InvalidMessage;
+}

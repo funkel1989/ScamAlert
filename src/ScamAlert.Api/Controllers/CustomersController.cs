@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using ScamAlert.Api.Contracts;
 using ScamAlert.Api.Services.Auth;
+using ScamAlert.Api.Services.Validation;
 using ScamAlert.Data;
 using ScamAlert.Data.Entities;
 using ScamAlert.Data.Enums;
@@ -35,6 +36,11 @@ public sealed class CustomersController(
             return BadRequest("At least one monitored device is required.");
         }
 
+        if (!EmailAddressValidator.TryValidate(request.Email, out var email, out var emailError))
+        {
+            return BadRequest(emailError);
+        }
+
         var now = DateTimeOffset.UtcNow;
         var customerId = Guid.NewGuid();
         var deviceProvisioning = request.Devices
@@ -45,7 +51,7 @@ public sealed class CustomersController(
         {
             Id = customerId,
             Name = request.Name,
-            Email = request.Email,
+            Email = email,
             CreatedUtc = now,
             UpdatedUtc = now,
             Subscriptions =

@@ -10,19 +10,33 @@ public sealed class ProvisionedDevicesSession(ProtectedSessionStorage sessionSto
 
     public async Task SaveAsync(IReadOnlyList<ProvisionedDeviceResponse> devices)
     {
-        var json = JsonSerializer.Serialize(devices);
-        await sessionStorage.SetAsync(StorageKey, json);
+        try
+        {
+            var json = JsonSerializer.Serialize(devices);
+            await sessionStorage.SetAsync(StorageKey, json);
+        }
+        catch (InvalidOperationException)
+        {
+            // Browser storage requires an interactive render (not static prerender).
+        }
     }
 
     public async Task<IReadOnlyList<ProvisionedDeviceResponse>?> LoadAndClearAsync()
     {
-        var result = await sessionStorage.GetAsync<string>(StorageKey);
-        if (!result.Success || string.IsNullOrWhiteSpace(result.Value))
+        try
+        {
+            var result = await sessionStorage.GetAsync<string>(StorageKey);
+            if (!result.Success || string.IsNullOrWhiteSpace(result.Value))
+            {
+                return null;
+            }
+
+            await sessionStorage.DeleteAsync(StorageKey);
+            return JsonSerializer.Deserialize<List<ProvisionedDeviceResponse>>(result.Value);
+        }
+        catch (InvalidOperationException)
         {
             return null;
         }
-
-        await sessionStorage.DeleteAsync(StorageKey);
-        return JsonSerializer.Deserialize<List<ProvisionedDeviceResponse>>(result.Value);
     }
 }

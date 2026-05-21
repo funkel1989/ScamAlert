@@ -134,7 +134,9 @@ dotnet run --project src/ScamAlert.AppHost/ScamAlert.AppHost.csproj
 
 The AppHost injects `ConnectionStrings__ScamAlertDb` for the SQL Server database resource (`ScamAlertDb` in `AppHost.cs`). When you run the API alone, `appsettings.json` defaults to LocalDB (`ScamAlert` database on `(localdb)\mssqllocaldb`).
 
-In the Aspire dashboard, open the **api** resource and use **Scalar API** (`/scalar`) to browse and try REST endpoints, or **Website** (`/`) for the Blazor portal. OpenAPI JSON is at `/openapi/v1.json` (Development only).
+In the Aspire dashboard, open the **api** resource and use **Scalar API** (`/scalar`) to browse and try REST endpoints, or **Website** (`/`) for the Blazor portal.
+
+**SQL queries (dev):** the AppHost also starts **DbGate** in Docker—the same idea as pgAdmin for Postgres. In the Aspire dashboard, open the **sql** resource and click **SQL queries**, or open the **dbgate** endpoint. No SSMS or Azure Data Studio required; use the browser to run `SELECT` against `ScamAlertDb` after signup or tests. This is local-only and not part of production deploys. OpenAPI JSON is at `/openapi/v1.json` (Development only).
 
 To call protected endpoints from Scalar, first `POST /api/auth/token` with body `{"username":"operator","password":"Dev-Secure1!"}` (bootstrap user from `appsettings.Development.json`), then paste the returned JWT into Scalar’s authorize flow if you add a bearer scheme, or send `Authorization: Bearer <token>` on each request.
 

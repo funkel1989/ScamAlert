@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using ScamAlert.Api.Services.Email;
+using ScamAlert.Api.Services.Validation;
 using ScamAlert.Api.Services.Web;
 using ScamAlert.Data;
 using ScamAlert.Data.Entities;
@@ -26,8 +27,7 @@ public sealed class PasswordResetService(
 
     public async Task RequestResetAsync(string email, CancellationToken cancellationToken)
     {
-        var normalized = email.Trim();
-        if (normalized.Length is < 3 or > 320)
+        if (!EmailAddressValidator.TryValidate(email, out var normalized, out _))
         {
             return;
         }

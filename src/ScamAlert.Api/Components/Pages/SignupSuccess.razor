@@ -1,6 +1,6 @@
 @page "/signup/success"
 @attribute [AllowAnonymous]
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 
 <PageTitle>Thank you</PageTitle>
 
@@ -50,9 +50,17 @@
 
 @code {
     private IReadOnlyList<ProvisionedDeviceResponse>? ProvisionedDevices { get; set; }
+    private bool _devicesLoaded;
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (!firstRender || _devicesLoaded)
+        {
+            return;
+        }
+
+        _devicesLoaded = true;
         ProvisionedDevices = await ProvisionedDevicesSession.LoadAndClearAsync();
+        StateHasChanged();
     }
 }

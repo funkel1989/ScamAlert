@@ -36,7 +36,7 @@ public sealed class SignupFlowTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var doc = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
         var customerId = doc.GetProperty("customerId").GetGuid();
-        Assert.Contains("signup/success", doc.GetProperty("checkoutUrl").GetString(), StringComparison.Ordinal);
+        Assert.Equal("/dashboard", doc.GetProperty("checkoutUrl").GetString());
 
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<ScamAlertDbContext>();

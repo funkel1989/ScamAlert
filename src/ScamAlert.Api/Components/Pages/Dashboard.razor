@@ -14,6 +14,12 @@ else if (Customer is null)
 }
 else
 {
+    @if (ShowWelcome)
+    {
+        <div class="alert alert-success mb-4" role="status">
+            <strong>You are all set.</strong> Your account is ready—finish setup below by pairing the PC you want to protect.
+        </div>
+    }
     <h1 class="h3 mb-4">Welcome, @Customer.Name</h1>
     <div class="row g-4 mb-4">
         <div class="col-md-4">
@@ -76,6 +82,9 @@ else
 @inject IOptions<WebSiteOptions> WebOptions
 
 @code {
+    [SupplyParameterFromQuery(Name = "welcome")]
+    public bool ShowWelcome { get; set; }
+
     private bool Loading { get; set; } = true;
     private CustomerVm? Customer { get; set; }
     private string InstallerUrl => WebOptions.Value.InstallerDownloadUrl;

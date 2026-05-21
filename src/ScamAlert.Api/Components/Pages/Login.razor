@@ -7,6 +7,10 @@
 <div class="row justify-content-center">
     <div class="col-md-6 col-lg-5">
         <h1 class="h3 mb-3">Log in</h1>
+        @if (ShowWelcome)
+        {
+            <div class="alert alert-success small">Account created—sign in to open your dashboard.</div>
+        }
         <p class="text-secondary small">Sign in with the email and password you used when you subscribed.</p>
         @if (!string.IsNullOrEmpty(Error))
         {
@@ -58,6 +62,9 @@
 
     [SupplyParameterFromQuery(Name = "returnUrl")]
     public string? ReturnUrl { get; set; }
+
+    [SupplyParameterFromQuery(Name = "welcome")]
+    public bool ShowWelcome { get; set; }
 
     private LoginModel Model { get; } = new();
 

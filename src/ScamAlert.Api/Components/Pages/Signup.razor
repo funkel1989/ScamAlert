@@ -126,10 +126,14 @@
 @using System.Net.Http.Json
 @using System.Text.Json
 @using ScamAlert.Api.Contracts
-@using ScamAlert.Api.Services.Web
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@using Microsoft.AspNetCore.Components.Authorization
 @inject HttpClient Http
 @inject NavigationManager NavigationManager
-@inject ProvisionedDevicesSession ProvisionedDevicesSession
+@inject IHttpContextAccessor HttpContextAccessor
+@inject IPortalCookieSignInService PortalCookieSignIn
+@inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IOptions<BillingOptions> BillingOptions
 @inject IOptions<WebSiteOptions> WebOptions
 
@@ -279,28 +283,40 @@
             }
 
             var doc = await response.Content.ReadFromJsonAsync<JsonElement>();
-            if (doc.TryGetProperty("provisionedDevices", out var devicesElement))
+            var url = doc.GetProperty("checkoutUrl").GetString();
+            if (IsStripeCheckoutUrl(url))
             {
-                var provisioned = JsonSerializer.Deserialize<List<ProvisionedDeviceResponse>>(
-                    devicesElement.GetRawText(),
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                if (provisioned is { Count: > 0 })
-                {
-                    await ProvisionedDevicesSession.SaveAsync(provisioned);
-                }
+                NavigationManager.NavigateTo(url!, forceLoad: true);
+                return;
             }
 
-            var url = doc.GetProperty("checkoutUrl").GetString();
-            if (!string.IsNullOrWhiteSpace(url))
+            var http = HttpContextAccessor.HttpContext;
+            if (http is not null &&
+                await PortalCookieSignIn.TrySignInAsync(http, Model.Email.Trim(), Model.Password, CancellationToken.None))
             {
-                NavigationManager.NavigateTo(url, forceLoad: true);
+                if (AuthenticationStateProvider is HttpContextAuthenticationStateProvider provider)
+                {
+                    provider.NotifyChanged();
+                }
+
+                NavigationManager.NavigateTo("/dashboard?welcome=1", forceLoad: true);
+                return;
             }
+
+            IsError = false;
+            Message = "Account created. Log in to open your dashboard.";
+            NavigationManager.NavigateTo("/login?returnUrl=/dashboard&welcome=1", forceLoad: true);
         }
         finally
         {
             Busy = false;
         }
     }
+
+    private static bool IsStripeCheckoutUrl(string? url) =>
+        !string.IsNullOrWhiteSpace(url) &&
+        Uri.TryCreate(url, UriKind.Absolute, out var absolute) &&
+        absolute.Host.Contains("stripe.com", StringComparison.OrdinalIgnoreCase);
 
     public sealed class SignupFormModel
     {

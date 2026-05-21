@@ -182,7 +182,7 @@ public sealed class SignupService(
         {
             return new SignupResult(
                 customerId,
-                $"{TrimSlash(web.PublicBaseUrl)}/signup/success",
+                "/dashboard",
                 provisionedDevices);
         }
 
@@ -216,7 +216,7 @@ public sealed class SignupService(
                         ["app_customer_id"] = customerId.ToString("D")
                     }
                 },
-                SuccessUrl = $"{baseUrl}/signup/success?session_id={{CHECKOUT_SESSION_ID}}",
+                SuccessUrl = $"{baseUrl}/signup/complete?session_id={{CHECKOUT_SESSION_ID}}",
                 CancelUrl = $"{baseUrl}/signup",
                 Metadata = new Dictionary<string, string>
                 {

@@ -76,7 +76,7 @@ After signup or login, use:
 - `/alerts` — recent alert history
 - `/forgot-password` / `/reset-password` — password reset (emails log to console without SendGrid)
 
-Signup returns device keys in the API response and on `/signup/success` (session). Prefer **Pair PC** on `/devices` for new machines. Welcome email content is logged when `Email:SendGridApiKey` is empty.
+After signup, local dev (`SkipPaymentForDevelopment`) signs you in and opens `/dashboard`. With Stripe, checkout returns to `/signup/complete`, which verifies payment, signs you in, and redirects to the dashboard. Prefer **Pair PC** on `/devices` for new machines. Welcome email content is logged when `Email:SendGridApiKey` is empty.
 
 ## Azure deployment (Phase 1)
 

@@ -57,6 +57,8 @@ builder.Services.Configure<BillingOptions>(builder.Configuration.GetSection(Bill
 builder.Services.Configure<PairingOptions>(builder.Configuration.GetSection(PairingOptions.SectionName));
 builder.Services.AddSingleton<IBillingTierCatalog, BillingTierCatalog>();
 builder.Services.AddScoped<ISignupService, SignupService>();
+builder.Services.AddScoped<ISignupCheckoutCompletionService, SignupCheckoutCompletionService>();
+builder.Services.AddScoped<IPortalCookieSignInService, PortalCookieSignInService>();
 builder.Services.AddScoped<ICustomerPortalContext, CustomerPortalContext>();
 builder.Services.AddScoped<IPortalDeviceService, PortalDeviceService>();
 builder.Services.AddScoped<IDevicePairingService, DevicePairingService>();
@@ -161,6 +163,9 @@ if (!app.Environment.IsEnvironment("Testing"))
 
 app.MapDefaultEndpoints();
 app.MapControllers();
+
+app.MapGet("/signup/success", (HttpRequest request) =>
+    Results.Redirect("/signup/complete" + request.QueryString.Value));
 
 if (!app.Environment.IsEnvironment("Testing"))
 {

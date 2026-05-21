@@ -85,7 +85,7 @@ public sealed class PasswordResetService(
 
     public async Task<bool> ResetPasswordAsync(string token, string newPassword, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(token) || newPassword.Length < 8)
+        if (string.IsNullOrWhiteSpace(token) || !PasswordPolicy.IsValid(newPassword))
         {
             return false;
         }

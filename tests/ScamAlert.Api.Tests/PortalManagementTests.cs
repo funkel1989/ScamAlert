@@ -69,7 +69,7 @@ public sealed class PortalManagementTests
             {
                 name = "Keys Test",
                 email = "signup-keys@example.com",
-                password = "longpassword1",
+                password = "LongPassw0rd!",
                 planCode = "pro",
                 contacts = new[] { new { fullName = "A", phoneNumber = "+15555550111", escalationOrder = 1 } },
                 devices = new[] { new { deviceName = "PC", externalDeviceId = "device-keys-1" } }
@@ -94,7 +94,7 @@ public sealed class PortalManagementTests
             {
                 name = "Reset User",
                 email = "reset-user@example.com",
-                password = "oldpassword1",
+                password = "LongPassw0rd!",
                 planCode = "pro",
                 contacts = new[] { new { fullName = "A", phoneNumber = "+15555550112", escalationOrder = 1 } },
                 devices = new[] { new { deviceName = "PC", externalDeviceId = "device-reset-1" } }
@@ -123,7 +123,7 @@ public sealed class PortalManagementTests
             new SelfServeSignupRequest(
                 "Portal User",
                 email,
-                "longpassword1",
+                "LongPassw0rd!",
                 "pro",
                 [new CreateContactRequest("Primary", "+15555550123", 1)],
                 [new CreateDeviceRequest("PC", externalDeviceId)]),

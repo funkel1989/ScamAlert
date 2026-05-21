@@ -23,7 +23,7 @@ public sealed class SignupFlowTests
             {
                 name = "Family Test",
                 email = "family-signup-test@example.com",
-                password = "longpassword1",
+                password = "LongPassw0rd!",
                 planCode = "pro",
                 contacts = new[]
                 {
@@ -44,6 +44,27 @@ public sealed class SignupFlowTests
     }
 
     [Fact]
+    public async Task Signup_weak_password_returns_bad_request()
+    {
+        await using var factory = new TestWebApplicationFactory();
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/api/signup",
+            new
+            {
+                name = "Weak Pass",
+                email = "weak-pass@example.com",
+                password = "short",
+                planCode = "pro",
+                contacts = new[] { new { fullName = "A", phoneNumber = "+15555550102", escalationOrder = 1 } },
+                devices = new[] { new { deviceName = "PC", externalDeviceId = "device-weak-1" } }
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Signup_duplicate_email_returns_conflict()
     {
         await using var factory = new TestWebApplicationFactory();
@@ -53,7 +74,7 @@ public sealed class SignupFlowTests
         {
             name = "Dup",
             email = "dup-signup@example.com",
-            password = "longpassword1",
+            password = "LongPassw0rd!",
             planCode = "pro",
             contacts = new[] { new { fullName = "A", phoneNumber = "+15555550101", escalationOrder = 1 } },
             devices = new[] { new { deviceName = "PC", externalDeviceId = "device-dup-1" } }

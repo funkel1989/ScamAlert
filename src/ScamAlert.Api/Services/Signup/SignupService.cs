@@ -56,9 +56,9 @@ public sealed class SignupService(
             throw new ArgumentException("Invalid email.", nameof(request));
         }
 
-        if (request.Password.Length < 8)
+        if (!PasswordPolicy.TryValidate(request.Password, out var passwordError))
         {
-            throw new ArgumentException("Password must be at least 8 characters.", nameof(request));
+            throw new ArgumentException(passwordError, nameof(request));
         }
 
         var emailTaken = await dbContext.AuthUserCredentials.AnyAsync(x => x.Username == email, cancellationToken)

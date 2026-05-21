@@ -30,7 +30,7 @@ builder.Services.AddOpenApi(options =>
     options.AddDocumentTransformer((document, _, _) =>
     {
         document.Info.Title = "ScamAlert API";
-        document.Info.Description = "Family protection API. In Development, POST /api/auth/token with bootstrap credentials for JWT.";
+        document.Info.Description = "ScamAlert API. In Development, POST /api/auth/token with bootstrap credentials for JWT.";
         return Task.CompletedTask;
     });
 });

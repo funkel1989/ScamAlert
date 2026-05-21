@@ -23,6 +23,11 @@ public sealed class AccountController(IPasswordResetService passwordResetService
     [EnableRateLimiting("signup")]
     public async Task<IActionResult> ResetPassword(ResetPasswordRequest request, CancellationToken cancellationToken)
     {
+        if (!PasswordPolicy.TryValidate(request.NewPassword, out var passwordError))
+        {
+            return BadRequest(new { error = passwordError });
+        }
+
         var ok = await passwordResetService.ResetPasswordAsync(request.Token, request.NewPassword, cancellationToken);
         return ok
             ? Ok(new { message = "Password updated. You can log in now." })

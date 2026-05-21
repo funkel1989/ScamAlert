@@ -70,7 +70,7 @@ public sealed class CustomerBillingServiceTests
         Assert.NotNull(summary);
         Assert.Equal("pro", summary.PlanCode);
         Assert.Single(summary.AvailableTiers);
-        Assert.Equal("Family protection", summary.AvailableTiers[0].DisplayName);
+        Assert.Equal("Personal license", summary.AvailableTiers[0].DisplayName);
     }
 
     [Fact]

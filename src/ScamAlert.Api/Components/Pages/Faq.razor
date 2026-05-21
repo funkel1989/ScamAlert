@@ -1,8 +1,9 @@
 @page "/faq"
 @attribute [AllowAnonymous]
+@using ScamAlert.Api.Services.Auth
 
 <PageMeta Title="FAQ — ScamAlert"
-          Description="Common questions about protecting family PCs, SMS alerts, and how ScamAlert helps you watch loved ones."
+          Description="Common questions about the $7.99/month personal license, SMS alerts, and remote-access detection on Windows."
           CanonicalPath="/faq" />
 
 <h1 class="h3 mb-4">Frequently asked questions</h1>
@@ -32,17 +33,23 @@
     private List<FaqItem> Items { get; } =
     [
         new("Who is ScamAlert for?",
-            "Families and caregivers who want to watch Windows PCs used by parents, grandparents, teens, or other loved ones—especially when you cannot be there in person."),
+            "Anyone with a Windows PC who wants SMS when suspicious remote access is attempted—especially during tech-support and refund scams."),
+        new("Is this a family or multi-seat plan?",
+            "No. ScamAlert is a single-user license at $7.99/month for one account. You can still add backup contacts for SMS escalation."),
         new("What does ScamAlert actually watch?",
             "Inbound remote-access style traffic on protected ports (such as RDP, SSH, and Telnet) on PCs where you install our Windows app. It is an early-warning layer, not full antivirus."),
         new("Who gets the text messages?",
-            "Only the trusted contacts you add to your account—typically adult family members. We do not sell your alert list to marketers."),
-        new("Do I need permission to protect someone's PC?",
-            "Yes. You should only install on computers you own or where you have clear permission from the user. Talk with your loved one about why you are adding protection."),
+            "Only the contacts you add to your account. We do not sell your alert list to marketers."),
+        new("Do I need permission to install on a PC?",
+            "Yes. Install only on computers you own or where you have clear permission from the user."),
         new("Will this stop every scam?",
-            "No product can. ScamAlert helps your family notice suspicious remote access sooner. Education and phone calls still matter."),
-        new("Does it read their email or browsing history?",
-            "No. We focus on remote-access attempt signals and account data needed to run the service—not on monitoring general web activity."),
+            "No product can. ScamAlert helps you notice suspicious remote access sooner. Good security habits still matter."),
+        new("How are passwords stored?",
+            "Passwords are hashed with PBKDF2 (SHA-256) and a unique salt—we never store plain-text passwords."),
+        new("What password rules apply?",
+            PasswordPolicy.RequirementsDescription),
+        new("Does it read my email or browsing history?",
+            "No. We focus on remote-access attempt signals and account data needed to run the service."),
         new("What countries do you support?",
             "The service is designed for United States customers (USD billing, US-oriented compliance). Contact us if you need other regions."),
         new("How do I cancel?",

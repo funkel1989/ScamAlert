@@ -62,9 +62,9 @@ Public pages: `/`, `/how-it-works`, `/pricing`, `/faq`, `/contact`, `/privacy`, 
 
 Signup requires acceptance of Terms, Privacy, SMS consent, and install permission. Update `Web:SupportEmail` and `Web:LegalEntityName` in appsettings before production.
 
-**Pricing:** One plan at **$7.99/month (USD)** (`Billing:Tiers` plan code `pro`, display name “Family protection”). Create a matching recurring price in Stripe and set `StripePriceId` before live checkout.
+**Pricing:** One plan at **$7.99/month (USD)** (`Billing:Tiers` plan code `pro`, display name “Personal license”). Single-user license—not a family/multi-seat plan. Create a matching recurring price in Stripe and set `StripePriceId` before live checkout.
 
-**Note:** Legal pages are starter templates for a family SaaS MVP—not a substitute for review by your attorney before launch.
+**Note:** Legal pages are starter templates for an MVP—not a substitute for review by your attorney before launch.
 
 ## Portal (Phase 2, local)
 
@@ -136,7 +136,7 @@ The AppHost injects `ConnectionStrings__ScamAlertDb` for the SQL Server database
 
 In the Aspire dashboard, open the **api** resource and use **Scalar API** (`/scalar`) to browse and try REST endpoints, or **Website** (`/`) for the Blazor portal. OpenAPI JSON is at `/openapi/v1.json` (Development only).
 
-To call protected endpoints from Scalar, first `POST /api/auth/token` with body `{"username":"operator","password":"dev-password"}` (bootstrap user from `appsettings.Development.json`), then paste the returned JWT into Scalar’s authorize flow if you add a bearer scheme, or send `Authorization: Bearer <token>` on each request.
+To call protected endpoints from Scalar, first `POST /api/auth/token` with body `{"username":"operator","password":"Dev-Secure1!"}` (bootstrap user from `appsettings.Development.json`), then paste the returned JWT into Scalar’s authorize flow if you add a bearer scheme, or send `Authorization: Bearer <token>` on each request.
 
 EF Core migrations run automatically when the API starts (`Database.Migrate()`).
 
@@ -179,7 +179,7 @@ Get a bearer token (development bootstrap user shown):
 ```powershell
 curl -X POST "http://localhost:5000/api/auth/token" `
   -H "Content-Type: application/json" `
-  -d "{\"username\":\"operator\",\"password\":\"dev-password\"}"
+  -d "{\"username\":\"operator\",\"password\":\"Dev-Secure1!\"}"
 ```
 
 Production auth notes:

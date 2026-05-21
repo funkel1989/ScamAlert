@@ -1,13 +1,13 @@
 @page "/pricing"
 @attribute [AllowAnonymous]
 
-<PageMeta Title="Pricing — $7.99/month to protect family PCs"
-          Description="One simple plan: $7.99 per month to watch loved ones' Windows PCs and alert family by SMS."
+<PageMeta Title="Pricing — $7.99/month personal license"
+          Description="One simple plan: $7.99 per month for a single-user ScamAlert license with SMS alerts on your Windows PCs."
           CanonicalPath="/pricing" />
 
 <h1 class="h3 mb-2">Simple pricing</h1>
 <p class="text-secondary mb-4">
-    One plan for families in the United States (@MarketRegion). <strong>@PriceLabel</strong>, billed through secure checkout.
+    One personal license for users in the United States (@MarketRegion). <strong>@PriceLabel</strong>, billed through secure checkout.
     Cancel anytime from your account.
 </p>
 
@@ -19,14 +19,14 @@
                 <div class="card-body d-flex flex-column p-4">
                     <h2 class="h4">@Tier.DisplayName</h2>
                     <p class="display-6 fw-semibold text-sa-accent mb-2">@PriceLabel</p>
-                    <p class="text-secondary">@(Tier.MarketingSummary ?? "Protect loved ones' PCs with alerts to family you choose.")</p>
+                    <p class="text-secondary">@(Tier.MarketingSummary ?? "Monitor your Windows PCs and alert contacts you trust.")</p>
                     <ul class="small text-secondary flex-grow-1">
                         @foreach (var feature in Tier.MarketingFeatures)
                         {
                             <li class="mb-1">@feature</li>
                         }
                     </ul>
-                    <a class="btn btn-primary btn-lg" href="/signup">Start protecting my family</a>
+                    <a class="btn btn-primary btn-lg" href="/signup">Subscribe for $7.99/month</a>
                 </div>
             </div>
         </div>

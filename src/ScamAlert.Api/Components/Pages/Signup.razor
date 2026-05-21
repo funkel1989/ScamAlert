@@ -6,9 +6,9 @@
 
 <div class="row justify-content-center">
     <div class="col-lg-8">
-        <h1 class="h3 mb-2">Create your family account</h1>
+        <h1 class="h3 mb-2">Create your account</h1>
         <p class="text-secondary mb-4">
-            Set up protection for a PC someone you love uses. Trusted contacts (often you and another family member) get SMS when
+            One personal license at $7.99/month. Register your Windows PC and the contacts who should receive SMS when
             suspicious remote access is detected.
         </p>
         @if (!string.IsNullOrEmpty(Message))
@@ -30,6 +30,7 @@
                 <div class="col-md-6">
                     <label class="form-label">Password</label>
                     <InputText type="password" class="form-control" @bind-Value="Model.Password" autocomplete="new-password" />
+                    <div class="form-text">@PasswordPolicy.RequirementsDescription Passwords are stored hashed (PBKDF2), never in plain text.</div>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Plan</label>
@@ -104,6 +105,7 @@
     </div>
 </div>
 
+@using ScamAlert.Api.Services.Auth
 @using System.ComponentModel.DataAnnotations
 @using System.Net.Http.Json
 @using System.Text.Json
@@ -125,7 +127,7 @@
         get
         {
             var tier = BillingOptions.Value.Tiers.FirstOrDefault();
-            var name = Plans.FirstOrDefault()?.DisplayName ?? tier?.DisplayName ?? "Family protection";
+            var name = Plans.FirstOrDefault()?.DisplayName ?? tier?.DisplayName ?? "Personal license";
             var price = tier?.MonthlyPriceLabel ?? "$7.99 per month";
             return $"{name} — {price}";
         }
@@ -148,7 +150,7 @@
         }
         catch
         {
-            Plans.Add(new SignupPlanResponse("pro", "Family protection"));
+            Plans.Add(new SignupPlanResponse("pro", "Personal license"));
         }
 
         if (!string.IsNullOrWhiteSpace(PlanQuery) && Plans.Any(p => p.PlanCode.Equals(PlanQuery, StringComparison.OrdinalIgnoreCase)))
@@ -171,6 +173,14 @@
         {
             IsError = true;
             Message = "Please accept all agreements before continuing.";
+            Busy = false;
+            return;
+        }
+
+        if (!PasswordPolicy.TryValidate(Model.Password, out var passwordError))
+        {
+            IsError = true;
+            Message = passwordError;
             Busy = false;
             return;
         }
@@ -243,7 +253,7 @@
         [Required, EmailAddress]
         public string Email { get; set; } = string.Empty;
 
-        [Required, MinLength(8)]
+        [Required, MinLength(10)]
         public string Password { get; set; } = string.Empty;
 
         [Required, MaxLength(100)]
@@ -262,7 +272,7 @@
         public string? SecondaryPhone { get; set; }
 
         [Required, MaxLength(200)]
-        public string DeviceName { get; set; } = "Family PC";
+        public string DeviceName { get; set; } = "My PC";
 
         public bool AcceptTerms { get; set; }
         public bool AcceptPrivacy { get; set; }

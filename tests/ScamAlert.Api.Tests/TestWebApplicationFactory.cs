@@ -44,7 +44,7 @@ public sealed class TestWebApplicationFactory : WebApplicationFactory<Program>
                     {
                         PlanCode = "pro",
                         StripePriceId = "price_test_799",
-                        DisplayName = "Family protection",
+                        DisplayName = "Personal license",
                         MonthlyPriceLabel = "$7.99 per month (USD)"
                     }
                 ];

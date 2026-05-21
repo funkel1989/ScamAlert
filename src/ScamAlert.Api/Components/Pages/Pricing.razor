@@ -1,14 +1,14 @@
 @page "/pricing"
 @attribute [AllowAnonymous]
 
-<PageMeta Title="Pricing — $7.99/month personal license"
-          Description="One simple plan: $7.99 per month for a single-user ScamAlert license with SMS alerts on your Windows PCs."
+<PageMeta Title="Pricing — $7.99/month to protect a loved one's PC"
+          Description="One plan: $7.99 per month. You manage the account, install on their Windows PC, and get SMS when remote access looks suspicious."
           CanonicalPath="/pricing" />
 
 <h1 class="h3 mb-2">Simple pricing</h1>
 <p class="text-secondary mb-4">
-    One personal license for users in the United States (@MarketRegion). <strong>@PriceLabel</strong>, billed through secure checkout.
-    Cancel anytime from your account.
+    One license for caregivers in the United States (@MarketRegion)—you subscribe, protect their PC, and receive the alerts.
+    <strong>@PriceLabel</strong>, billed through secure online checkout. Cancel anytime from your account. Your card’s billing address is collected on the payment page.
 </p>
 
 @if (Tier is not null)
@@ -26,7 +26,7 @@
                             <li class="mb-1">@feature</li>
                         }
                     </ul>
-                    <a class="btn btn-primary btn-lg" href="/signup">Subscribe for $7.99/month</a>
+                    <a class="btn btn-primary btn-lg" href="/signup">Protect someone I care for</a>
                 </div>
             </div>
         </div>

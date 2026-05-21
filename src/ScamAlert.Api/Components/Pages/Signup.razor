@@ -8,8 +8,11 @@
     <div class="col-lg-8">
         <h1 class="h3 mb-2">Create your account</h1>
         <p class="text-secondary mb-4">
-            One personal license at $7.99/month. Register your Windows PC and the contacts who should receive SMS when
-            suspicious remote access is detected.
+            One license at $7.99/month—you manage everything. Add <strong>your</strong> phone for alerts, then install on
+            the PC of someone you care for so you know when a scammer tries remote access. They do not need to monitor it.
+        </p>
+        <p class="small text-secondary mb-4">
+            After this form you’ll finish payment online. Your card’s billing address is collected on the secure payment page.
         </p>
         @if (!string.IsNullOrEmpty(Message))
         {
@@ -20,8 +23,12 @@
             <ValidationSummary />
             <div class="row g-3">
                 <div class="col-md-6">
-                    <label class="form-label">Your name</label>
-                    <InputText class="form-control" @bind-Value="Model.Name" />
+                    <label class="form-label">First name</label>
+                    <InputText class="form-control" @bind-Value="Model.FirstName" autocomplete="given-name" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Last name</label>
+                    <InputText class="form-control" @bind-Value="Model.LastName" autocomplete="family-name" />
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Email (also your login)</label>
@@ -29,8 +36,12 @@
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Password</label>
-                    <InputText type="password" class="form-control" @bind-Value="Model.Password" autocomplete="new-password" />
-                    <div class="form-text">@PasswordPolicy.RequirementsDescription Passwords are stored hashed (PBKDF2), never in plain text.</div>
+                    <input type="password"
+                           class="form-control"
+                           autocomplete="new-password"
+                           @bind="Model.Password"
+                           @bind:event="oninput" />
+                    <PasswordRequirementsChecklist Password="@Model.Password" ShowWhenEmpty="true" />
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Plan</label>
@@ -50,25 +61,22 @@
                 </div>
                 <div class="col-12"><hr /></div>
                 <div class="col-md-6">
-                    <label class="form-label">Primary contact name</label>
-                    <InputText class="form-control" @bind-Value="Model.PrimaryContactName" />
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label">Primary mobile (E.164, e.g. +15555550100)</label>
-                    <InputText class="form-control" @bind-Value="Model.PrimaryPhone" />
+                    <label class="form-label">Your mobile for alerts</label>
+                    <UsPhoneInput @bind-Value="Model.PrimaryPhone" Autocomplete="tel" />
+                    <div class="form-text">10-digit U.S. mobile number, e.g. (888) 888-8888.</div>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Secondary contact (optional)</label>
                     <InputText class="form-control" @bind-Value="Model.SecondaryContactName" />
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label">Secondary mobile (optional)</label>
-                    <InputText class="form-control" @bind-Value="Model.SecondaryPhone" />
+                    <label class="form-label">Backup mobile (optional)</label>
+                    <UsPhoneInput @bind-Value="Model.SecondaryPhone" Autocomplete="tel" />
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label">PC to protect (display name)</label>
+                    <label class="form-label">Their PC (display name)</label>
                     <InputText class="form-control" @bind-Value="Model.DeviceName" />
-                    <div class="form-text">Example: "Mom's laptop" — install our app on that Windows PC after signup.</div>
+                    <div class="form-text">Example: Mom's laptop — install our app on <em>their</em> Windows PC after signup.</div>
                 </div>
                 <div class="col-12"><hr /></div>
                 <div class="col-12">
@@ -115,6 +123,7 @@
 @inject NavigationManager NavigationManager
 @inject ProvisionedDevicesSession ProvisionedDevicesSession
 @inject IOptions<BillingOptions> BillingOptions
+@inject IOptions<WebSiteOptions> WebOptions
 
 @code {
     private bool Busy { get; set; }
@@ -185,11 +194,37 @@
             return;
         }
 
+        var accountName = $"{Model.FirstName.Trim()} {Model.LastName.Trim()}".Trim();
+        if (string.IsNullOrWhiteSpace(accountName))
+        {
+            IsError = true;
+            Message = "First and last name are required.";
+            Busy = false;
+            return;
+        }
+
+        if (!UsPhoneNumber.TryNormalize(Model.PrimaryPhone, out _, out var primaryPhoneError))
+        {
+            IsError = true;
+            Message = primaryPhoneError;
+            Busy = false;
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(Model.SecondaryPhone)
+            && !UsPhoneNumber.TryNormalize(Model.SecondaryPhone, out _, out var secondaryPhoneError))
+        {
+            IsError = true;
+            Message = secondaryPhoneError;
+            Busy = false;
+            return;
+        }
+
         try
         {
             var contacts = new List<CreateContactRequest>
             {
-                new(Model.PrimaryContactName.Trim(), Model.PrimaryPhone.Trim(), 1)
+                new(accountName, Model.PrimaryPhone.Trim(), 1)
             };
             if (!string.IsNullOrWhiteSpace(Model.SecondaryPhone) && !string.IsNullOrWhiteSpace(Model.SecondaryContactName))
             {
@@ -206,12 +241,18 @@
             };
 
             var payload = new SelfServeSignupRequest(
-                Model.Name.Trim(),
+                accountName,
                 Model.Email.Trim(),
                 Model.Password,
                 Model.PlanCode.Trim(),
                 contacts,
-                devices);
+                devices,
+                new SignupConsents(
+                    Model.AcceptTerms,
+                    Model.AcceptPrivacy,
+                    Model.AcceptSmsConsent,
+                    Model.ConfirmInstallPermission,
+                    WebOptions.Value.LegalEffectiveDate));
 
             var response = await Http.PostAsJsonAsync("/api/signup", payload);
             if (!response.IsSuccessStatusCode)
@@ -247,8 +288,11 @@
 
     public sealed class SignupFormModel
     {
-        [Required, MaxLength(200)]
-        public string Name { get; set; } = string.Empty;
+        [Required, MaxLength(100)]
+        public string FirstName { get; set; } = string.Empty;
+
+        [Required, MaxLength(100)]
+        public string LastName { get; set; } = string.Empty;
 
         [Required, EmailAddress]
         public string Email { get; set; } = string.Empty;
@@ -259,10 +303,7 @@
         [Required, MaxLength(100)]
         public string PlanCode { get; set; } = "pro";
 
-        [Required, MaxLength(200)]
-        public string PrimaryContactName { get; set; } = string.Empty;
-
-        [Required, MaxLength(32)]
+        [Required]
         public string PrimaryPhone { get; set; } = string.Empty;
 
         [MaxLength(200)]
@@ -272,7 +313,7 @@
         public string? SecondaryPhone { get; set; }
 
         [Required, MaxLength(200)]
-        public string DeviceName { get; set; } = "My PC";
+        public string DeviceName { get; set; } = "Their PC";
 
         public bool AcceptTerms { get; set; }
         public bool AcceptPrivacy { get; set; }

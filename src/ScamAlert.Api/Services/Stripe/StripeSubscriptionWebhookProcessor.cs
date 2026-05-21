@@ -46,6 +46,9 @@ public sealed class StripeSubscriptionWebhookProcessor(
             case "invoice.payment_failed" when stripeEvent.Data.Object is Invoice failed:
                 await HandleInvoicePaymentFailedAsync(failed, cancellationToken);
                 break;
+            case "customer.updated" when stripeEvent.Data.Object is global::Stripe.Customer stripeCustomer:
+                await SyncBillingAddressAsync(stripeCustomer, cancellationToken);
+                break;
             default:
                 logger.LogDebug("Ignoring Stripe event type {Type}.", stripeEvent.Type);
                 break;
@@ -89,6 +92,10 @@ public sealed class StripeSubscriptionWebhookProcessor(
             {
                 customer.StripeCustomerId = session.CustomerId;
                 customer.UpdatedUtc = DateTimeOffset.UtcNow;
+                await StripeBillingAddressMapper.TrySyncFromStripeCustomerAsync(
+                    customer,
+                    session.CustomerId,
+                    cancellationToken);
             }
 
             var localSub = customer.Subscriptions
@@ -217,6 +224,30 @@ public sealed class StripeSubscriptionWebhookProcessor(
 
     private static string? TryGetInvoiceSubscriptionId(Invoice invoice) =>
         invoice.Parent?.SubscriptionDetails?.SubscriptionId;
+
+    private async Task SyncBillingAddressAsync(global::Stripe.Customer stripeCustomer, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(stripeCustomer.Id))
+        {
+            return;
+        }
+
+        var customer = await dbContext.Customers
+            .SingleOrDefaultAsync(x => x.StripeCustomerId == stripeCustomer.Id, cancellationToken);
+
+        if (customer is null)
+        {
+            return;
+        }
+
+        if (StripeBillingAddressMapper.TryApplyFromStripeAddress(
+                customer,
+                stripeCustomer.Address,
+                DateTimeOffset.UtcNow))
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+    }
 
     private static bool TryResolveCustomerId(Session session, out Guid customerId)
     {

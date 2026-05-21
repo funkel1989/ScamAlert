@@ -11,4 +11,9 @@ public interface ICustomerBillingService
     Task<string> CreateCustomerPortalUrlAsync(ClaimsPrincipal user, CancellationToken cancellationToken);
 
     Task ChangePlanAsync(ClaimsPrincipal user, string planCode, CancellationToken cancellationToken);
+
+    Task UpdateBillingAddressAsync(
+        ClaimsPrincipal user,
+        UpdateBillingAddressRequest request,
+        CancellationToken cancellationToken);
 }

@@ -1,9 +1,8 @@
 @page "/faq"
 @attribute [AllowAnonymous]
-@using ScamAlert.Api.Services.Auth
 
 <PageMeta Title="FAQ — ScamAlert"
-          Description="Common questions about the $7.99/month personal license, SMS alerts, and remote-access detection on Windows."
+          Description="Common questions about protecting a loved one's PC, SMS alerts to you, and the $7.99/month license."
           CanonicalPath="/faq" />
 
 <h1 class="h3 mb-4">Frequently asked questions</h1>
@@ -33,27 +32,33 @@
     private List<FaqItem> Items { get; } =
     [
         new("Who is ScamAlert for?",
-            "Anyone with a Windows PC who wants SMS when suspicious remote access is attempted—especially during tech-support and refund scams."),
+            "Anyone who wants to watch a Windows PC used by someone they care for—often an older parent or grandparent—especially when you cannot be there in person."),
+        new("Do they need to use ScamAlert day to day?",
+            "No. You sign up, install on their PC, and receive the text alerts. They do not need to log in regularly or check a website."),
+        new("What phone number should I enter?",
+            "A U.S. mobile number in the usual format, like (888) 888-8888."),
+        new("Why does checkout ask for a billing address?",
+            "Our secure payment page collects the billing address tied to your card. That helps prevent fraud. You can also add or update an address later under Billing in your account."),
         new("Is this a family or multi-seat plan?",
-            "No. ScamAlert is a single-user license at $7.99/month for one account. You can still add backup contacts for SMS escalation."),
+            "No. One $7.99/month license is tied to your account. You register their PC under it and list who gets texts (usually you, plus an optional backup)."),
         new("What does ScamAlert actually watch?",
-            "Inbound remote-access style traffic on protected ports (such as RDP, SSH, and Telnet) on PCs where you install our Windows app. It is an early-warning layer, not full antivirus."),
+            "Attempts to reach the PC over remote connection paths that scammers often use—not everything on the computer. Think of it as an early heads-up, not a replacement for antivirus software."),
         new("Who gets the text messages?",
-            "Only the contacts you add to your account. We do not sell your alert list to marketers."),
-        new("Do I need permission to install on a PC?",
-            "Yes. Install only on computers you own or where you have clear permission from the user."),
+            "Only the contacts you add—typically your phone and maybe a spouse or sibling. We do not sell your alert list to marketers."),
+        new("Do I need permission to install on their PC?",
+            "Yes. Install only on computers you own or where the user has given you clear permission. Talk with your loved one about why you are adding protection."),
         new("Will this stop every scam?",
             "No product can. ScamAlert helps you notice suspicious remote access sooner. Good security habits still matter."),
         new("How are passwords stored?",
-            "Passwords are hashed with PBKDF2 (SHA-256) and a unique salt—we never store plain-text passwords."),
+            "We never store your actual password. It is protected using industry-standard encryption on our servers."),
         new("What password rules apply?",
-            PasswordPolicy.RequirementsDescription),
+            "At least 10 characters, including an uppercase letter, a number, and a special character (such as ! or #)."),
         new("Does it read my email or browsing history?",
-            "No. We focus on remote-access attempt signals and account data needed to run the service."),
+            "No. We only collect what we need to send alerts and run your account."),
         new("What countries do you support?",
             "The service is designed for United States customers (USD billing, US-oriented compliance). Contact us if you need other regions."),
         new("How do I cancel?",
-            "Use the billing area in your account after sign-in, or the Stripe customer portal. See our Terms for details."),
+            "Use Billing in your account after sign-in to manage payment or cancel. See our Terms for details."),
     ];
 
     private void Toggle(FaqItem item) => item.Open = !item.Open;

@@ -4,6 +4,7 @@ using ScamAlert.Api.Contracts;
 using ScamAlert.Api.Services.Auth;
 using ScamAlert.Api.Services.Billing;
 using ScamAlert.Api.Services.Email;
+using ScamAlert.Api.Services.Phone;
 using ScamAlert.Api.Services.Stripe;
 using ScamAlert.Api.Services.Web;
 using ScamAlert.Data;
@@ -61,6 +62,25 @@ public sealed class SignupService(
             throw new ArgumentException(passwordError, nameof(request));
         }
 
+        if (!request.Consents.AcceptTerms
+            || !request.Consents.AcceptPrivacy
+            || !request.Consents.AcceptSmsConsent
+            || !request.Consents.ConfirmInstallPermission)
+        {
+            throw new ArgumentException("All agreements must be accepted before signup.", nameof(request));
+        }
+
+        var normalizedContacts = new List<(CreateContactRequest Request, string E164)>();
+        foreach (var contact in request.Contacts)
+        {
+            if (!UsPhoneNumber.TryNormalize(contact.PhoneNumber, out var e164, out var phoneError))
+            {
+                throw new ArgumentException(phoneError, nameof(request));
+            }
+
+            normalizedContacts.Add((contact, e164));
+        }
+
         var emailTaken = await dbContext.AuthUserCredentials.AnyAsync(x => x.Username == email, cancellationToken)
             || await dbContext.Customers.AnyAsync(x => x.Email == email, cancellationToken);
         if (emailTaken)
@@ -77,11 +97,23 @@ public sealed class SignupService(
             .Select(x => new { Request = x, ApiKey = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)) })
             .ToList();
 
+        var consentIp = string.IsNullOrWhiteSpace(request.ConsentIpAddress)
+            ? null
+            : request.ConsentIpAddress.Trim()[..Math.Min(request.ConsentIpAddress.Trim().Length, 64)];
+
         var customer = new Customer
         {
             Id = customerId,
             Name = request.Name.Trim(),
             Email = email,
+            TermsAcceptedUtc = now,
+            PrivacyAcceptedUtc = now,
+            SmsConsentAcceptedUtc = now,
+            InstallPermissionConfirmedUtc = now,
+            SignupConsentIpAddress = consentIp,
+            SignupLegalDocumentVersion = string.IsNullOrWhiteSpace(request.Consents.LegalDocumentVersion)
+                ? null
+                : request.Consents.LegalDocumentVersion.Trim()[..Math.Min(request.Consents.LegalDocumentVersion.Trim().Length, 20)],
             CreatedUtc = now,
             UpdatedUtc = now,
             Subscriptions =
@@ -97,13 +129,13 @@ public sealed class SignupService(
                     UpdatedUtc = now
                 }
             ],
-            Contacts = request.Contacts.Select(x => new Contact
+            Contacts = normalizedContacts.Select(x => new Contact
             {
                 Id = Guid.NewGuid(),
                 CustomerId = customerId,
-                FullName = x.FullName.Trim(),
-                PhoneNumber = x.PhoneNumber.Trim(),
-                EscalationOrder = x.EscalationOrder,
+                FullName = x.Request.FullName.Trim(),
+                PhoneNumber = x.E164,
+                EscalationOrder = x.Request.EscalationOrder,
                 IsActive = true,
                 CreatedUtc = now,
                 UpdatedUtc = now

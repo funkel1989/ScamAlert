@@ -35,6 +35,32 @@ public sealed class BillingController(ICustomerBillingService billing) : BaseApi
         }
     }
 
+    [HttpPut("address")]
+    [EnableRateLimiting("billing-mutate")]
+    public async Task<IActionResult> UpdateBillingAddress(
+        [FromBody] UpdateBillingAddressRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request is null)
+        {
+            return BadRequest(new { error = "Address is required." });
+        }
+
+        try
+        {
+            await billing.UpdateBillingAddressAsync(User, request, cancellationToken);
+            return Ok(new { message = "Billing address saved." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpPost("change-plan")]
     [EnableRateLimiting("billing-mutate")]
     public async Task<IActionResult> ChangePlan([FromBody] ChangePlanRequest request, CancellationToken cancellationToken)

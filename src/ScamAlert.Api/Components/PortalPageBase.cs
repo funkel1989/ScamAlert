@@ -18,7 +18,7 @@ public abstract class PortalPageBase : ComponentBase
         var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         CustomerId = await PortalContext.TryGetSingleCustomerIdAsync(state.User, CancellationToken.None);
         PortalScopeError = CustomerId is null
-            ? "This page requires a login linked to exactly one customer account. Global administrators should use the API or operator tools."
+            ? "This page is for a single account. If you manage multiple organizations, contact support for help."
             : null;
         PortalReady = true;
     }

@@ -15,6 +15,20 @@ public static class PasswordPolicy
 
     public static bool IsValid(string? password) => TryValidate(password, out _);
 
+    public static PasswordRequirementStatus Evaluate(string? password)
+    {
+        if (string.IsNullOrEmpty(password))
+        {
+            return new PasswordRequirementStatus(false, false, false, false);
+        }
+
+        return new PasswordRequirementStatus(
+            password.Length >= MinLength,
+            Uppercase.IsMatch(password),
+            Digit.IsMatch(password),
+            Special.IsMatch(password));
+    }
+
     public static bool TryValidate(string? password, out string error)
     {
         if (string.IsNullOrEmpty(password))
@@ -50,4 +64,13 @@ public static class PasswordPolicy
         error = string.Empty;
         return true;
     }
+}
+
+public sealed record PasswordRequirementStatus(
+    bool MinLength,
+    bool HasUppercase,
+    bool HasDigit,
+    bool HasSpecial)
+{
+    public bool AllMet => MinLength && HasUppercase && HasDigit && HasSpecial;
 }

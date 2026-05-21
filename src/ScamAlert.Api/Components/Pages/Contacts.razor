@@ -31,8 +31,8 @@ else
                     <input class="form-control" @bind="FormName" disabled="@Busy" />
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label">Mobile (E.164)</label>
-                    <input class="form-control" @bind="FormPhone" disabled="@Busy" />
+                    <label class="form-label">Mobile</label>
+                    <UsPhoneInput @bind-Value="FormPhone" Disabled="@Busy" />
                 </div>
                 <div class="col-md-2">
                     <label class="form-label">Order</label>
@@ -77,7 +77,7 @@ else
                     <tr>
                         <td>@c.EscalationOrder</td>
                         <td>@c.FullName</td>
-                        <td>@c.PhoneNumber</td>
+                        <td>@UsPhoneNumber.FormatDisplay(c.PhoneNumber)</td>
                         <td>@(c.IsActive ? "Yes" : "No")</td>
                         <td>
                             <button type="button" class="btn btn-sm btn-link" @onclick="() => BeginEdit(c)">Edit</button>
@@ -127,7 +127,7 @@ else
     {
         EditingId = c.Id;
         FormName = c.FullName;
-        FormPhone = c.PhoneNumber;
+        FormPhone = UsPhoneNumber.FormatDisplay(c.PhoneNumber);
         FormOrder = c.EscalationOrder;
         FormActive = c.IsActive;
     }

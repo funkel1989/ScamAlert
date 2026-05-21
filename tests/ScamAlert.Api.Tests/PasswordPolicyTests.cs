@@ -22,4 +22,19 @@ public sealed class PasswordPolicyTests
     {
         Assert.False(PasswordPolicy.IsValid(password));
     }
+
+    [Fact]
+    public void Evaluate_tracks_individual_rules()
+    {
+        var partial = PasswordPolicy.Evaluate("long");
+        Assert.False(partial.MinLength);
+        Assert.False(partial.AllMet);
+
+        var full = PasswordPolicy.Evaluate("LongPassw0rd!");
+        Assert.True(full.MinLength);
+        Assert.True(full.HasUppercase);
+        Assert.True(full.HasDigit);
+        Assert.True(full.HasSpecial);
+        Assert.True(full.AllMet);
+    }
 }

@@ -7,6 +7,22 @@ public sealed class Customer
     public string? Email { get; set; }
     /// <summary>Stripe Customer id (<c>cus_</c>) for billing portal and recurring charges.</summary>
     public string? StripeCustomerId { get; set; }
+
+    public string? BillingLine1 { get; set; }
+    public string? BillingLine2 { get; set; }
+    public string? BillingCity { get; set; }
+    public string? BillingState { get; set; }
+    public string? BillingPostalCode { get; set; }
+    public string? BillingCountry { get; set; }
+    public DateTimeOffset? BillingAddressSyncedUtc { get; set; }
+
+    public DateTimeOffset? TermsAcceptedUtc { get; set; }
+    public DateTimeOffset? PrivacyAcceptedUtc { get; set; }
+    public DateTimeOffset? SmsConsentAcceptedUtc { get; set; }
+    public DateTimeOffset? InstallPermissionConfirmedUtc { get; set; }
+    public string? SignupConsentIpAddress { get; set; }
+    public string? SignupLegalDocumentVersion { get; set; }
+
     public DateTimeOffset CreatedUtc { get; set; }
     public DateTimeOffset UpdatedUtc { get; set; }
 

@@ -29,7 +29,9 @@ public sealed class SignupController(ISignupService signupService) : ControllerB
     {
         try
         {
-            var result = await signupService.RegisterAndStartCheckoutAsync(request, cancellationToken);
+            var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+            var withIp = request with { ConsentIpAddress = ip };
+            var result = await signupService.RegisterAndStartCheckoutAsync(withIp, cancellationToken);
             return Ok(new
             {
                 result.CustomerId,

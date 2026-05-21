@@ -13,23 +13,23 @@ else if (Summary is null)
     <h1 class="h3 mb-3">Billing</h1>
     <p class="text-secondary">
         Self-service billing is available when your login is linked to exactly one organization.
-        Global administrators should use the Stripe Dashboard for customer billing.
+        This page is for individual accounts. Administrators with access to multiple organizations should contact support for billing help.
     </p>
 }
 else
 {
     <h1 class="h3 mb-3">Billing</h1>
     <p class="small text-secondary mb-4">
-        ScamAlert is offered in the United States. Use US-issued cards and configure recurring prices in USD in Stripe.
+        ScamAlert is offered in the United States. Subscriptions are billed in U.S. dollars.
         Market: <strong>@Summary.MarketRegion</strong>
     </p>
 
     @if (!string.IsNullOrEmpty(Banner))
     {
-        <div class="alert alert-warning" role="status">@Banner</div>
+        <div class="alert @(BannerIsError ? "alert-danger" : "alert-info")" role="status">@Banner</div>
     }
 
-    <div class="row g-4">
+    <div class="row g-4 mb-4">
         <div class="col-lg-6">
             <div class="card shadow-sm h-100">
                 <div class="card-body">
@@ -37,7 +37,7 @@ else
                     <p class="mb-1"><span class="text-muted">Plan</span> <strong>@Summary.PlanCode</strong></p>
                     <p class="mb-1"><span class="text-muted">Status</span> <strong>@Summary.SubscriptionStatus</strong></p>
                     <p class="mb-3">
-                        <span class="text-muted">Renews / period end (UTC)</span>
+                        <span class="text-muted">Next renewal</span>
                         <strong>@(Summary.PeriodEndUtc?.ToString("u") ?? "—")</strong>
                     </p>
                     @if (Summary.PortalAvailable)
@@ -59,7 +59,7 @@ else
                 <div class="card shadow-sm h-100">
                     <div class="card-body">
                         <h2 class="h5">Change plan</h2>
-                        <p class="small text-secondary">Upgrades or downgrades prorate on your next Stripe invoice (live mode).</p>
+                        <p class="small text-secondary">Plan changes may adjust your next bill.</p>
                         <div class="mb-3">
                             <label class="form-label" for="planSelect">Plan</label>
                             <select id="planSelect" class="form-select" @bind="SelectedPlanCode" disabled="@Busy">
@@ -83,15 +83,61 @@ else
                     <div class="card-body">
                         <h2 class="h5">Your subscription</h2>
                         <p class="text-secondary small mb-0">
-                            ScamAlert is a single-user license at <strong>$7.99 per month</strong>. Use “Manage payment &amp; invoices” to update your card or cancel.
+                            Your caregiver license is <strong>$7.99 per month</strong>—one account you use to protect their PC and receive alerts. Use “Manage payment &amp; invoices” to update your card or cancel.
                         </p>
                     </div>
                 </div>
             </div>
         }
     </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <h2 class="h5 mb-2">Billing address</h2>
+            <p class="small text-secondary mb-3">
+                Kept on your account for receipts and subscription records. When your subscription is active, we also update your payment profile.
+                @if (Summary.BillingAddressSyncedUtc is { } synced)
+                {
+                    <span class="d-block mt-1">Last saved: <strong>@synced.ToLocalTime().ToString("g")</strong></span>
+                }
+                else
+                {
+                    <span class="d-block mt-1">No address on file yet—add one below or complete payment after signup.</span>
+                }
+            </p>
+            <EditForm Model="AddressForm" OnValidSubmit="SaveAddressAsync" FormName="billing-address">
+                <div class="row g-3">
+                    <div class="col-md-8">
+                        <label class="form-label">Street address</label>
+                        <InputText class="form-control" @bind-Value="AddressForm.Line1" autocomplete="address-line1" disabled="@Busy" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Apt / suite (optional)</label>
+                        <InputText class="form-control" @bind-Value="AddressForm.Line2" autocomplete="address-line2" disabled="@Busy" />
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label">City</label>
+                        <InputText class="form-control" @bind-Value="AddressForm.City" autocomplete="address-level2" disabled="@Busy" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">State</label>
+                        <InputText class="form-control" @bind-Value="AddressForm.State" autocomplete="address-level1" maxlength="2" disabled="@Busy" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">ZIP code</label>
+                        <InputText class="form-control" @bind-Value="AddressForm.PostalCode" autocomplete="postal-code" disabled="@Busy" />
+                    </div>
+                    <div class="col-md-12">
+                        <button type="submit" class="btn btn-primary" disabled="@Busy">Save billing address</button>
+                    </div>
+                </div>
+            </EditForm>
+        </div>
+    </div>
 }
 
+@using ScamAlert.Api.Contracts
+@using ScamAlert.Api.Services.Billing
 @inject ICustomerBillingService CustomerBilling
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager Navigation
@@ -99,11 +145,19 @@ else
 @code {
     private bool Loading { get; set; } = true;
     private bool Busy { get; set; }
+    private bool BannerIsError { get; set; }
     private string? Banner { get; set; }
     private BillingSummaryResponse? Summary { get; set; }
     private string SelectedPlanCode { get; set; } = string.Empty;
+    private BillingAddressFormModel AddressForm { get; } = new();
 
     protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+        Loading = false;
+    }
+
+    private async Task ReloadAsync()
     {
         var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         Summary = await CustomerBilling.GetSummaryAsync(state.User, default);
@@ -116,7 +170,29 @@ else
             }
         }
 
-        Loading = false;
+        LoadAddressFormFromSummary();
+    }
+
+    private void LoadAddressFormFromSummary()
+    {
+        if (Summary?.BillingAddress is { } addr)
+        {
+            AddressForm.Line1 = addr.Line1;
+            AddressForm.Line2 = addr.Line2 ?? string.Empty;
+            AddressForm.City = addr.City;
+            AddressForm.State = addr.State;
+            AddressForm.PostalCode = addr.PostalCode;
+            AddressForm.Country = addr.Country;
+        }
+        else
+        {
+            AddressForm.Line1 = string.Empty;
+            AddressForm.Line2 = string.Empty;
+            AddressForm.City = string.Empty;
+            AddressForm.State = string.Empty;
+            AddressForm.PostalCode = string.Empty;
+            AddressForm.Country = "US";
+        }
     }
 
     private async Task OpenPortalAsync()
@@ -131,6 +207,7 @@ else
         }
         catch (InvalidOperationException ex)
         {
+            BannerIsError = true;
             Banner = ex.Message;
         }
         finally
@@ -147,16 +224,64 @@ else
         {
             var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
             await CustomerBilling.ChangePlanAsync(state.User, SelectedPlanCode, default);
-            Summary = await CustomerBilling.GetSummaryAsync(state.User, default);
+            await ReloadAsync();
+            BannerIsError = false;
             Banner = "Plan updated.";
         }
         catch (InvalidOperationException ex)
         {
+            BannerIsError = true;
             Banner = ex.Message;
         }
         finally
         {
             Busy = false;
         }
+    }
+
+    private async Task SaveAddressAsync()
+    {
+        Busy = true;
+        Banner = null;
+        try
+        {
+            var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var request = new UpdateBillingAddressRequest(
+                AddressForm.Line1.Trim(),
+                string.IsNullOrWhiteSpace(AddressForm.Line2) ? null : AddressForm.Line2.Trim(),
+                AddressForm.City.Trim(),
+                AddressForm.State.Trim(),
+                AddressForm.PostalCode.Trim(),
+                "US");
+
+            await CustomerBilling.UpdateBillingAddressAsync(state.User, request, default);
+            await ReloadAsync();
+            BannerIsError = false;
+            Banner = "Billing address saved.";
+        }
+        catch (ArgumentException ex)
+        {
+            BannerIsError = true;
+            Banner = ex.Message;
+        }
+        catch (InvalidOperationException ex)
+        {
+            BannerIsError = true;
+            Banner = ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    private sealed class BillingAddressFormModel
+    {
+        public string Line1 { get; set; } = string.Empty;
+        public string Line2 { get; set; } = string.Empty;
+        public string City { get; set; } = string.Empty;
+        public string State { get; set; } = string.Empty;
+        public string PostalCode { get; set; } = string.Empty;
+        public string Country { get; set; } = "US";
     }
 }

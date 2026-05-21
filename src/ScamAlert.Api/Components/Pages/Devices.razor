@@ -34,15 +34,6 @@ else
         </div>
     }
 
-    @if (RevealedKey is not null)
-    {
-        <div class="alert alert-warning">
-            <strong>Save this device key now.</strong> It will not be shown again.
-            <div class="mt-2 font-monospace small user-select-all">@RevealedKey.IngestApiKey</div>
-            <span class="small text-secondary d-block mt-1">External id: @RevealedKey.ExternalDeviceId</span>
-        </div>
-    }
-
     <div class="card shadow-sm mb-4">
         <div class="card-body">
             <h2 class="h5">Add a PC</h2>
@@ -62,9 +53,8 @@ else
         <table class="table table-sm align-middle">
             <thead>
                 <tr>
-                    <th>Name</th>
-                    <th>External id</th>
-                    <th>Key</th>
+                    <th>Computer</th>
+                    <th>Status</th>
                     <th></th>
                 </tr>
             </thead>
@@ -73,16 +63,11 @@ else
                 {
                     <tr>
                         <td>@d.DeviceName</td>
-                        <td class="font-monospace small">@d.ExternalDeviceId</td>
-                        <td>@(d.HasIngestKey ? "Configured" : "—")</td>
+                        <td>@(d.HasIngestKey ? "Connected" : "Needs pairing")</td>
                         <td class="text-nowrap">
-                            <button type="button" class="btn btn-sm btn-outline-primary me-1" disabled="@Busy"
+                            <button type="button" class="btn btn-sm btn-outline-primary" disabled="@Busy"
                                     @onclick="() => CreatePairingCodeAsync(d.Id)">
                                 Pair PC
-                            </button>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@Busy"
-                                    @onclick="() => RotateKeyAsync(d.Id)">
-                                Rotate key
                             </button>
                         </td>
                     </tr>
@@ -91,18 +76,12 @@ else
         </table>
     </div>
 
-    <div class="card border-0 bg-light">
+    <div class="card border-0 sa-muted-panel">
         <div class="card-body small text-secondary">
-            <p class="mb-2"><strong>Recommended:</strong> click <em>Pair PC</em> above and run the pairing script on the Windows machine. It writes config to:</p>
-            <p class="font-monospace small mb-2">%ProgramData%\ScamAlert\broker.appsettings.json</p>
-            <p class="mb-2">Manual broker settings (<code>appsettings.json</code> or environment) still work:</p>
-            <ul class="mb-0">
-                <li><code>CloudAlerts:Enabled</code> = true</li>
-                <li><code>CloudAlerts:BaseUrl</code> = your API URL</li>
-                <li><code>CloudAlerts:ExternalDeviceId</code> = external id from the table</li>
-                <li><code>CloudAlerts:DeviceIngestApiKey</code> = key from pairing, add, or rotate</li>
-            </ul>
-            <a class="btn btn-link btn-sm ps-0 mt-2" href="@InstallerUrl" target="_blank" rel="noopener">Installer download</a>
+            <p class="mb-2"><strong>Easiest setup:</strong> click <em>Pair PC</em> above, then on their Windows computer run the installer and enter the code in the <strong>Pair this PC</strong> wizard (also in the Start Menu under ScamAlert).</p>
+            <p class="mb-0">
+                <a class="btn btn-link btn-sm ps-0" href="@InstallerUrl" target="_blank" rel="noopener">Download the Windows installer</a>
+            </p>
         </div>
     </div>
 }
@@ -118,7 +97,6 @@ else
 
 @code {
     private List<PortalDeviceResponse> DeviceList { get; } = [];
-    private PortalDeviceCreatedResponse? RevealedKey { get; set; }
     private DevicePairingCodeResponse? ActivePairingCode { get; set; }
     private string NewDeviceName { get; set; } = "My PC";
     private string? Banner { get; set; }
@@ -144,15 +122,17 @@ else
     {
         Busy = true;
         Banner = null;
-        RevealedKey = null;
         try
         {
-            RevealedKey = await DeviceService.CreateAsync(
+            var created = await DeviceService.CreateAsync(
                 CustomerId!.Value,
                 new CreatePortalDeviceRequest(NewDeviceName, null),
                 default);
-            Banner = "Device added.";
             await ReloadAsync();
+            ActivePairingCode = await PairingService.CreateCodeAsync(CustomerId!.Value, created.Id, default);
+            Banner = ActivePairingCode is null
+                ? "Device added."
+                : "Device added. Enter the code below on their Windows PC.";
         }
         catch (Exception ex)
         {
@@ -169,7 +149,6 @@ else
         Busy = true;
         Banner = null;
         ActivePairingCode = null;
-        RevealedKey = null;
         try
         {
             ActivePairingCode = await PairingService.CreateCodeAsync(CustomerId!.Value, deviceId, default);
@@ -185,24 +164,4 @@ else
         }
     }
 
-    private async Task RotateKeyAsync(Guid deviceId)
-    {
-        Busy = true;
-        Banner = null;
-        RevealedKey = null;
-        ActivePairingCode = null;
-        try
-        {
-            RevealedKey = await DeviceService.RotateIngestKeyAsync(CustomerId!.Value, deviceId, default);
-            Banner = RevealedKey is null ? "Device not found." : "New key generated.";
-        }
-        catch (Exception ex)
-        {
-            Banner = ex.Message;
-        }
-        finally
-        {
-            Busy = false;
-        }
-    }
 }

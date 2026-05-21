@@ -6,4 +6,6 @@ public sealed record SelfServeSignupRequest(
     string Password,
     string PlanCode,
     List<CreateContactRequest> Contacts,
-    List<CreateDeviceRequest> Devices);
+    List<CreateDeviceRequest> Devices,
+    SignupConsents Consents,
+    string? ConsentIpAddress = null);

@@ -23,6 +23,14 @@ public sealed class ScamAlertDbContext(DbContextOptions<ScamAlertDbContext> opti
             entity.Property(x => x.Name).HasMaxLength(200);
             entity.Property(x => x.Email).HasMaxLength(320);
             entity.Property(x => x.StripeCustomerId).HasMaxLength(255);
+            entity.Property(x => x.BillingLine1).HasMaxLength(200);
+            entity.Property(x => x.BillingLine2).HasMaxLength(200);
+            entity.Property(x => x.BillingCity).HasMaxLength(100);
+            entity.Property(x => x.BillingState).HasMaxLength(50);
+            entity.Property(x => x.BillingPostalCode).HasMaxLength(20);
+            entity.Property(x => x.BillingCountry).HasMaxLength(2);
+            entity.Property(x => x.SignupConsentIpAddress).HasMaxLength(64);
+            entity.Property(x => x.SignupLegalDocumentVersion).HasMaxLength(20);
             entity.HasIndex(x => x.StripeCustomerId).IsUnique().HasFilter("[StripeCustomerId] IS NOT NULL");
         });
 

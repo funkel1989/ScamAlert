@@ -1,0 +1,48 @@
+@using ScamAlert.Api.Services.Phone
+
+<input type="tel"
+       class="@CssClass"
+       inputmode="numeric"
+       autocomplete="@Autocomplete"
+       placeholder="(888) 888-8888"
+       maxlength="@UsPhoneNumber.MaxFormattedLength"
+       value="@Display"
+       @oninput="OnInputAsync"
+       disabled="@Disabled" />
+
+@code {
+    [Parameter]
+    public string Value { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<string> ValueChanged { get; set; }
+
+    [Parameter]
+    public string CssClass { get; set; } = "form-control";
+
+    [Parameter]
+    public string Autocomplete { get; set; } = "tel";
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    private string Display { get; set; } = string.Empty;
+
+    protected override void OnParametersSet()
+    {
+        var formatted = string.IsNullOrWhiteSpace(Value)
+            ? string.Empty
+            : UsPhoneNumber.FormatDisplay(Value);
+        if (!string.Equals(Display, formatted, StringComparison.Ordinal))
+        {
+            Display = formatted;
+        }
+    }
+
+    private async Task OnInputAsync(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? string.Empty;
+        Display = UsPhoneNumber.FormatAsYouType(raw);
+        await ValueChanged.InvokeAsync(Display);
+    }
+}

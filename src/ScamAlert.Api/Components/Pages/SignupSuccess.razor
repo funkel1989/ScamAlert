@@ -21,20 +21,19 @@
     {
         <div class="col-lg-8 mx-auto mt-4">
             <div class="alert alert-warning">
-                <strong>Save these device credentials now.</strong> They are not shown again after you leave this page.
+                <strong>Save this information now.</strong> You will not see it again after you leave this page.
             </div>
-            <ul class="list-unstyled mb-0 font-monospace small">
+            <ul class="list-unstyled mb-0 small">
                 @foreach (var d in ProvisionedDevices)
                 {
                     <li class="mb-3 border-bottom pb-2">
                         <div><strong>@d.DeviceName</strong></div>
-                        <div>External id: @d.ExternalDeviceId</div>
-                        <div class="user-select-all">Key: @d.IngestApiKey</div>
+                        <p class="text-secondary mb-1">Use the pairing steps on the devices page—the installer wizard is the easiest way to connect this PC.</p>
                     </li>
                 }
             </ul>
             <p class="small text-secondary mt-2">
-                Configure <code>CloudAlerts</code> on the Windows broker, or add more devices from the portal after sign-in.
+                You can add more computers from your account after you sign in.
             </p>
         </div>
     }

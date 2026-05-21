@@ -72,7 +72,8 @@ public sealed class PortalManagementTests
                 password = "LongPassw0rd!",
                 planCode = "pro",
                 contacts = new[] { new { fullName = "A", phoneNumber = "+15555550111", escalationOrder = 1 } },
-                devices = new[] { new { deviceName = "PC", externalDeviceId = "device-keys-1" } }
+                devices = new[] { new { deviceName = "PC", externalDeviceId = "device-keys-1" } },
+                consents = SignupTestHelpers.SignupConsentsJson()
             });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -97,7 +98,8 @@ public sealed class PortalManagementTests
                 password = "LongPassw0rd!",
                 planCode = "pro",
                 contacts = new[] { new { fullName = "A", phoneNumber = "+15555550112", escalationOrder = 1 } },
-                devices = new[] { new { deviceName = "PC", externalDeviceId = "device-reset-1" } }
+                devices = new[] { new { deviceName = "PC", externalDeviceId = "device-reset-1" } },
+                consents = SignupTestHelpers.SignupConsentsJson()
             });
 
         await client.PostAsJsonAsync("/api/account/forgot-password", new { email = "reset-user@example.com" });
@@ -126,7 +128,8 @@ public sealed class PortalManagementTests
                 "LongPassw0rd!",
                 "pro",
                 [new CreateContactRequest("Primary", "+15555550123", 1)],
-                [new CreateDeviceRequest("PC", externalDeviceId)]),
+                [new CreateDeviceRequest("PC", externalDeviceId)],
+                SignupTestHelpers.ValidConsents()),
             default);
 
         Assert.Single(result.ProvisionedDevices);

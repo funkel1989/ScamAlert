@@ -29,7 +29,8 @@ public sealed class SignupFlowTests
                 {
                     new { fullName = "Mom", phoneNumber = "+15555550100", escalationOrder = 1 }
                 },
-                devices = new[] { new { deviceName = "Living room PC", externalDeviceId = "device-signup-1" } }
+                devices = new[] { new { deviceName = "Living room PC", externalDeviceId = "device-signup-1" } },
+                consents = SignupTestHelpers.SignupConsentsJson()
             });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -41,6 +42,36 @@ public sealed class SignupFlowTests
         var db = scope.ServiceProvider.GetRequiredService<ScamAlertDbContext>();
         var sub = await db.Subscriptions.AsNoTracking().SingleAsync(x => x.CustomerId == customerId);
         Assert.Equal(SubscriptionStatus.Active, sub.Status);
+    }
+
+    [Fact]
+    public async Task Signup_accepts_us_formatted_phone()
+    {
+        await using var factory = new TestWebApplicationFactory();
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/api/signup",
+            new
+            {
+                name = "Phone Format",
+                email = "phone-format@example.com",
+                password = "LongPassw0rd!",
+                planCode = "pro",
+                contacts = new[] { new { fullName = "Self", phoneNumber = "(555) 555-0199", escalationOrder = 1 } },
+                devices = new[] { new { deviceName = "Their PC", externalDeviceId = "device-phone-1" } },
+                consents = SignupTestHelpers.SignupConsentsJson()
+            });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ScamAlertDbContext>();
+        var phone = await db.Contacts.AsNoTracking()
+            .Where(x => x.FullName == "Self")
+            .Select(x => x.PhoneNumber)
+            .SingleAsync();
+        Assert.Equal("+15555550199", phone);
     }
 
     [Fact]
@@ -58,7 +89,8 @@ public sealed class SignupFlowTests
                 password = "short",
                 planCode = "pro",
                 contacts = new[] { new { fullName = "A", phoneNumber = "+15555550102", escalationOrder = 1 } },
-                devices = new[] { new { deviceName = "PC", externalDeviceId = "device-weak-1" } }
+                devices = new[] { new { deviceName = "PC", externalDeviceId = "device-weak-1" } },
+                consents = SignupTestHelpers.SignupConsentsJson()
             });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -77,7 +109,8 @@ public sealed class SignupFlowTests
             password = "LongPassw0rd!",
             planCode = "pro",
             contacts = new[] { new { fullName = "A", phoneNumber = "+15555550101", escalationOrder = 1 } },
-            devices = new[] { new { deviceName = "PC", externalDeviceId = "device-dup-1" } }
+            devices = new[] { new { deviceName = "PC", externalDeviceId = "device-dup-1" } },
+            consents = SignupTestHelpers.SignupConsentsJson()
         };
 
         Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync("/api/signup", body)).StatusCode);

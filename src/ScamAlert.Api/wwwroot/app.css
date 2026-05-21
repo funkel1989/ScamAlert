@@ -249,6 +249,36 @@ hr {
   letter-spacing: -0.02em;
 }
 
+.sa-password-rules {
+  color: var(--sa-text-muted);
+}
+
+.sa-password-rule {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+  transition: color 0.15s ease;
+}
+
+.sa-password-rule-icon {
+  display: inline-block;
+  width: 1rem;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  line-height: 1;
+  opacity: 0.55;
+}
+
+.sa-password-rule--met {
+  color: var(--sa-accent);
+}
+
+.sa-password-rule--met .sa-password-rule-icon {
+  opacity: 1;
+  font-weight: 700;
+}
+
 .accordion-item {
   background: var(--sa-surface);
   border-color: var(--sa-border);

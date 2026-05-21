@@ -62,7 +62,7 @@ Public pages: `/`, `/how-it-works`, `/pricing`, `/faq`, `/contact`, `/privacy`, 
 
 Signup requires acceptance of Terms, Privacy, SMS consent, and install permission. Update `Web:SupportEmail` and `Web:LegalEntityName` in appsettings before production.
 
-**Pricing:** One plan at **$7.99/month (USD)** (`Billing:Tiers` plan code `pro`, display name “Personal license”). Single-user license—not a family/multi-seat plan. Create a matching recurring price in Stripe and set `StripePriceId` before live checkout.
+**Pricing:** One plan at **$7.99/month (USD)** (`Billing:Tiers` plan code `pro`, display name “Personal license”). One account for you (the caregiver)—install on a loved one’s PC and receive SMS alerts; not a multi-seat family plan. Create a matching recurring price in Stripe and set `StripePriceId` before live checkout.
 
 **Note:** Legal pages are starter templates for an MVP—not a substitute for review by your attorney before launch.
 

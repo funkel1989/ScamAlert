@@ -53,7 +53,43 @@ public sealed class CustomerBillingService(
             portalReason is null,
             portalReason,
             tiers,
-            billing.MarketRegion.Trim());
+            billing.MarketRegion.Trim(),
+            StripeBillingAddressMapper.ToDto(customer),
+            customer.BillingAddressSyncedUtc);
+    }
+
+    public async Task UpdateBillingAddressAsync(
+        ClaimsPrincipal user,
+        UpdateBillingAddressRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!BillingAddressValidator.TryValidate(request, out var validationError))
+        {
+            throw new ArgumentException(validationError);
+        }
+
+        var customerId = await TryResolveAuthorizedCustomerIdAsync(user, cancellationToken)
+            ?? throw new InvalidOperationException("Billing address can only be updated for a single-organization account.");
+
+        var stripe = stripeOptions.Value;
+        var customer = await dbContext.Customers
+            .SingleAsync(c => c.Id == customerId, cancellationToken);
+
+        var now = DateTimeOffset.UtcNow;
+        StripeBillingAddressMapper.ApplyToLocalCustomer(customer, request, now);
+
+        if (!stripe.SkipPaymentForDevelopment
+            && !string.IsNullOrWhiteSpace(customer.StripeCustomerId)
+            && !string.IsNullOrWhiteSpace(stripe.SecretKey))
+        {
+            StripeConfiguration.ApiKey = stripe.SecretKey;
+            await StripeBillingAddressMapper.PushToStripeCustomerAsync(
+                customer.StripeCustomerId,
+                customer,
+                cancellationToken);
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
     }
 
     public async Task<string> CreateCustomerPortalUrlAsync(ClaimsPrincipal user, CancellationToken cancellationToken)

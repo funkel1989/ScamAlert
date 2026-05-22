@@ -33,6 +33,7 @@ public sealed class SignupService(
     IOptions<WebSiteOptions> webOptions,
     IOptions<BillingOptions> billingOptions,
     IBillingTierCatalog billingTierCatalog,
+    ISignupSignInTicketStore signInTicketStore,
     ILogger<SignupService> logger) : ISignupService
 {
     public async Task<SignupResult> RegisterAndStartCheckoutAsync(SelfServeSignupRequest request, CancellationToken cancellationToken)
@@ -180,9 +181,10 @@ public sealed class SignupService(
 
         if (stripe.SkipPaymentForDevelopment)
         {
+            var ticket = signInTicketStore.Create(customerId);
             return new SignupResult(
                 customerId,
-                "/dashboard",
+                $"/signup/complete?ticket={ticket}",
                 provisionedDevices);
         }
 

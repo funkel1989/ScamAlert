@@ -57,6 +57,7 @@ builder.Services.Configure<BillingOptions>(builder.Configuration.GetSection(Bill
 builder.Services.Configure<PairingOptions>(builder.Configuration.GetSection(PairingOptions.SectionName));
 builder.Services.AddSingleton<IBillingTierCatalog, BillingTierCatalog>();
 builder.Services.AddScoped<ISignupService, SignupService>();
+builder.Services.AddSingleton<ISignupSignInTicketStore, SignupSignInTicketStore>();
 builder.Services.AddScoped<ISignupCheckoutCompletionService, SignupCheckoutCompletionService>();
 builder.Services.AddScoped<IPortalCookieSignInService, PortalCookieSignInService>();
 builder.Services.AddScoped<ICustomerPortalContext, CustomerPortalContext>();

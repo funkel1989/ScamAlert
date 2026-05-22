@@ -28,7 +28,8 @@ public static class AuthServiceCollectionExtensions
             services.AddAuthentication("Testing")
                 .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, TestingAuthHandler>(
                     "Testing",
-                    _ => { });
+                    _ => { })
+                .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme);
             services.AddAuthorization(options =>
             {
                 options.AddPolicy(AuthPolicies.AdminOnly, policy => policy.RequireRole("admin"));

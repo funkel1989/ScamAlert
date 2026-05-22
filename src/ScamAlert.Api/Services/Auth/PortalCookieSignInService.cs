@@ -9,6 +9,8 @@ public interface IPortalCookieSignInService
 {
     Task<bool> TrySignInAsync(HttpContext httpContext, string username, string password, CancellationToken cancellationToken);
 
+    Task SignInFromValidationAsync(HttpContext httpContext, AuthValidationResult validatedResult);
+
     Task<bool> TrySignInByCustomerIdAsync(HttpContext httpContext, Guid customerId, CancellationToken cancellationToken);
 }
 
@@ -30,6 +32,20 @@ public sealed class PortalCookieSignInService(
 
         await SignInPrincipalAsync(httpContext, result.Username, result.Roles, result.CustomerScope);
         return true;
+    }
+
+    public Task SignInFromValidationAsync(HttpContext httpContext, AuthValidationResult validatedResult)
+    {
+        if (!validatedResult.Success)
+        {
+            throw new InvalidOperationException("Cannot sign in from a failed validation result.");
+        }
+
+        return SignInPrincipalAsync(
+            httpContext,
+            validatedResult.Username,
+            validatedResult.Roles,
+            validatedResult.CustomerScope);
     }
 
     public async Task<bool> TrySignInByCustomerIdAsync(

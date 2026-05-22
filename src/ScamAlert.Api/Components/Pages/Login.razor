@@ -12,30 +12,35 @@
             <div class="alert alert-success small">Account created—sign in to open your dashboard.</div>
         }
         <p class="text-secondary small">Sign in with the email and password you used when you subscribed.</p>
-        @if (!string.IsNullOrEmpty(Error))
+        @if (!string.IsNullOrEmpty(ErrorMessage))
         {
-            <div class="alert alert-danger">@Error</div>
+            <div class="alert alert-danger">@ErrorMessage</div>
         }
-        <EditForm Model="Model" OnValidSubmit="SubmitAsync" FormName="login">
-            <DataAnnotationsValidator />
-            <ValidationSummary />
+        <form method="post" action="/login/sign-in">
+            <AntiforgeryToken />
+            <input type="hidden" name="returnUrl" value="@(ReturnUrl ?? string.Empty)" />
             <div class="mb-3">
-                <label class="form-label">Email</label>
-                <input type="email"
+                <label class="form-label" for="login-email">Email</label>
+                <input id="login-email"
+                       name="email"
+                       type="email"
                        class="form-control"
                        autocomplete="username"
                        maxlength="@EmailAddressValidator.MaxLength"
-                       @bind="Model.Email"
-                       @bind:event="oninput" />
-                <ValidationMessage For="@(() => Model.Email)" />
-                <EmailValidationHint Email="@Model.Email" ShowWhenEmpty="true" />
+                       value="@Email"
+                       required />
             </div>
             <div class="mb-3">
-                <label class="form-label">Password</label>
-                <InputText type="password" class="form-control" @bind-Value="Model.Password" autocomplete="current-password" />
+                <label class="form-label" for="login-password">Password</label>
+                <input id="login-password"
+                       name="password"
+                       type="password"
+                       class="form-control"
+                       autocomplete="current-password"
+                       required />
             </div>
             <button class="btn btn-primary w-100" type="submit">Log in</button>
-        </EditForm>
+        </form>
         <p class="mt-3 small text-center"><a href="/forgot-password">Forgot password?</a></p>
         @if (MicrosoftLoginEnabled)
         {
@@ -46,75 +51,29 @@
 </div>
 
 @using ScamAlert.Api.Services.Validation
-@using System.ComponentModel.DataAnnotations
-@using Microsoft.AspNetCore.Authentication
-@using Microsoft.AspNetCore.Authentication.Cookies
-@using Microsoft.AspNetCore.Components.Authorization
-@using Microsoft.AspNetCore.WebUtilities
-@inject IHttpContextAccessor HttpContextAccessor
-@inject IAuthCredentialService AuthCredentialService
-@inject AuthenticationStateProvider AuthenticationStateProvider
-@inject NavigationManager Navigation
 @inject IConfiguration Configuration
 
 @code {
-    private string? Error { get; set; }
-
     [SupplyParameterFromQuery(Name = "returnUrl")]
     public string? ReturnUrl { get; set; }
 
     [SupplyParameterFromQuery(Name = "welcome")]
     public bool ShowWelcome { get; set; }
 
-    private LoginModel Model { get; } = new();
+    [SupplyParameterFromQuery(Name = "error")]
+    public string? ErrorCode { get; set; }
+
+    [SupplyParameterFromQuery(Name = "email")]
+    public string? Email { get; set; }
 
     private bool MicrosoftLoginEnabled =>
         !string.IsNullOrWhiteSpace(Configuration["Authentication:Microsoft:ClientId"]);
 
-    private async Task SubmitAsync()
+    private string? ErrorMessage => ErrorCode switch
     {
-        Error = null;
-        var http = HttpContextAccessor.HttpContext;
-        if (http is null)
-        {
-            Error = "Unable to access request.";
-            return;
-        }
-
-        var result = await AuthCredentialService.ValidateAsync(Model.Email, Model.Password, CancellationToken.None);
-        if (!result.Success)
-        {
-            Error = result.IsLockedOut ? "Account is temporarily locked. Try again later." : "Invalid email or password.";
-            return;
-        }
-
-        var principal = PortalClaimsPrincipalFactory.Create(
-            result.Username,
-            result.Roles.ToArray(),
-            result.CustomerScope.ToArray());
-
-        await http.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
-        if (AuthenticationStateProvider is HttpContextAuthenticationStateProvider p)
-        {
-            p.NotifyChanged();
-        }
-
-        var dest = string.IsNullOrWhiteSpace(ReturnUrl) ? "/dashboard" : ReturnUrl;
-        if (!Uri.TryCreate(dest, UriKind.Relative, out _))
-        {
-            dest = "/dashboard";
-        }
-
-        Navigation.NavigateTo(dest, forceLoad: true);
-    }
-
-    public sealed class LoginModel
-    {
-        [Required]
-        [ValidEmailAddress]
-        public string Email { get; set; } = string.Empty;
-
-        [Required, MinLength(1)]
-        public string Password { get; set; } = string.Empty;
-    }
+        "locked" => "Account is temporarily locked. Try again later.",
+        "invalid" => "Invalid email or password.",
+        "checkout" => "Payment could not be confirmed. Sign in if you already have an account.",
+        _ => null
+    };
 }

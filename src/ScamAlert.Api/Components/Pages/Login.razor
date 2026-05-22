@@ -45,12 +45,13 @@
         @if (MicrosoftLoginEnabled)
         {
             <div class="text-center my-3 text-muted small">or</div>
-            <a class="btn btn-outline-secondary w-100" href="/external/microsoft?returnUrl=@Uri.EscapeDataString(ReturnUrl ?? "/dashboard")">Sign in with Microsoft</a>
+            <a class="btn btn-outline-secondary w-100" href="/external/microsoft?returnUrl=@Uri.EscapeDataString(ReturnUrlSanitizer.Sanitize(ReturnUrl))">Sign in with Microsoft</a>
         }
     </div>
 </div>
 
 @using ScamAlert.Api.Services.Validation
+@using ScamAlert.Api.Services.Web
 @inject IConfiguration Configuration
 
 @code {

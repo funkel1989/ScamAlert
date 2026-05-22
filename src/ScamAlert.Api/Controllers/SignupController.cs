@@ -36,6 +36,7 @@ public sealed class SignupController(ISignupService signupService) : ControllerB
             {
                 result.CustomerId,
                 checkoutUrl = result.CheckoutUrl,
+                signInTicket = result.SignInTicket,
                 provisionedDevices = result.ProvisionedDevices
             });
         }

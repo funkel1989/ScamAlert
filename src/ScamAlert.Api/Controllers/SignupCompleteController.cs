@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using ScamAlert.Api.Services.Auth;
 using ScamAlert.Api.Services.Signup;
 
@@ -11,22 +12,32 @@ public sealed class SignupCompleteController(
     ISignupSignInTicketStore signInTicketStore,
     IPortalCookieSignInService portalSignIn) : Controller
 {
-    [HttpGet("/signup/complete")]
-    public async Task<IActionResult> Complete(
-        [FromQuery] string? session_id,
-        [FromQuery] string? ticket,
+    [HttpPost("/signup/complete")]
+    [ValidateAntiForgeryToken]
+    [EnableRateLimiting("signup-complete")]
+    public async Task<IActionResult> CompleteWithTicket(
+        [FromForm] string ticket,
         CancellationToken cancellationToken)
     {
-        if (!string.IsNullOrWhiteSpace(ticket) && signInTicketStore.TryConsume(ticket, out var ticketCustomerId))
+        if (!signInTicketStore.TryConsume(ticket, out var customerId))
         {
-            if (await portalSignIn.TrySignInByCustomerIdAsync(HttpContext, ticketCustomerId, cancellationToken))
-            {
-                return Redirect("/dashboard?welcome=true");
-            }
-
             return RedirectToLogin();
         }
 
+        if (!await portalSignIn.TrySignInByCustomerIdAsync(HttpContext, customerId, cancellationToken))
+        {
+            return RedirectToLogin();
+        }
+
+        return Redirect("/dashboard?welcome=true");
+    }
+
+    [HttpGet("/signup/complete")]
+    [EnableRateLimiting("signup-complete")]
+    public async Task<IActionResult> CompleteStripe(
+        [FromQuery] string? session_id,
+        CancellationToken cancellationToken)
+    {
         if (string.IsNullOrWhiteSpace(session_id))
         {
             return RedirectToLogin();

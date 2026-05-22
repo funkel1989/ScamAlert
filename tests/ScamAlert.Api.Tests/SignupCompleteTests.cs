@@ -14,6 +14,9 @@ public sealed class SignupCompleteTests
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Equal("/signup/complete?session_id=cs_test", response.Headers.Location?.OriginalString);
+
+        var bare = await client.GetAsync("/signup/success");
+        Assert.Equal("/signup/complete", bare.Headers.Location?.OriginalString);
     }
 
     [Fact]

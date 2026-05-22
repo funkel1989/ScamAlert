@@ -7,7 +7,7 @@ using ScamAlert.Api.Services.Web;
 
 namespace ScamAlert.Api.HostedServices;
 
-/// <summary>Logs production misconfiguration at startup (does not block the process).</summary>
+/// <summary>Validates production configuration at startup and fails fast when misconfigured.</summary>
 public sealed class ProductionConfigurationValidator(
     IHostEnvironment environment,
     IOptions<AuthOptions> authOptions,
@@ -39,7 +39,11 @@ public sealed class ProductionConfigurationValidator(
             issues.Add("Authentication:BootstrapAdmin:Enabled must be false in production.");
         }
 
-        if (!stripeOptions.Value.SkipPaymentForDevelopment)
+        if (stripeOptions.Value.SkipPaymentForDevelopment)
+        {
+            issues.Add("Stripe:SkipPaymentForDevelopment must be false in production.");
+        }
+        else
         {
             if (string.IsNullOrWhiteSpace(stripeOptions.Value.SecretKey))
             {
@@ -81,7 +85,8 @@ public sealed class ProductionConfigurationValidator(
             logger.LogError("Production configuration: {Issue}", issue);
         }
 
-        return Task.CompletedTask;
+        throw new InvalidOperationException(
+            "Production configuration is invalid. Fix the issues logged above before starting the API.");
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

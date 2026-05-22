@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using ScamAlert.Api.Services.Auth;
 using ScamAlert.Api.Services.Validation;
+using ScamAlert.Api.Services.Web;
 
 namespace ScamAlert.Api.Controllers;
 
@@ -32,16 +33,13 @@ public sealed class LoginController(
         }
 
         await portalSignIn.SignInFromValidationAsync(HttpContext, result);
-        return Redirect(SanitizeReturnUrl(returnUrl));
+        return Redirect(ReturnUrlSanitizer.Sanitize(returnUrl));
     }
 
     private RedirectResult RedirectToLogin(string error, string? returnUrl, string? email = null)
     {
         var query = new List<string> { $"error={Uri.EscapeDataString(error)}" };
-        if (!string.IsNullOrWhiteSpace(returnUrl))
-        {
-            query.Add($"returnUrl={Uri.EscapeDataString(returnUrl)}");
-        }
+        query.Add($"returnUrl={Uri.EscapeDataString(ReturnUrlSanitizer.Sanitize(returnUrl))}");
 
         if (!string.IsNullOrWhiteSpace(email))
         {
@@ -50,9 +48,4 @@ public sealed class LoginController(
 
         return Redirect($"/login?{string.Join('&', query)}");
     }
-
-    private static string SanitizeReturnUrl(string? returnUrl) =>
-        string.IsNullOrWhiteSpace(returnUrl) || !Uri.TryCreate(returnUrl, UriKind.Relative, out _)
-            ? "/dashboard"
-            : returnUrl;
 }

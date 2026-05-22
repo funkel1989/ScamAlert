@@ -23,6 +23,7 @@ public interface ISignupService
 public sealed record SignupResult(
     Guid CustomerId,
     string CheckoutUrl,
+    string? SignInTicket,
     IReadOnlyList<ProvisionedDeviceResponse> ProvisionedDevices);
 
 public sealed class SignupService(
@@ -184,7 +185,8 @@ public sealed class SignupService(
             var ticket = signInTicketStore.Create(customerId);
             return new SignupResult(
                 customerId,
-                $"/signup/complete?ticket={ticket}",
+                "/signup/complete",
+                ticket,
                 provisionedDevices);
         }
 
@@ -231,6 +233,7 @@ public sealed class SignupService(
         return new SignupResult(
             customerId,
             session.Url ?? throw new InvalidOperationException("Stripe returned no checkout URL."),
+            SignInTicket: null,
             provisionedDevices);
     }
 

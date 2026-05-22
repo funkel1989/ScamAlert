@@ -117,6 +117,13 @@
             </div>
             <button class="btn btn-primary mt-4" type="submit" disabled="@Busy">Continue to payment</button>
         </EditForm>
+        @if (!string.IsNullOrEmpty(PendingSignInTicket))
+        {
+            <form method="post" action="/signup/complete" id="signup-complete-form" class="d-none">
+                <AntiforgeryToken />
+                <input type="hidden" name="ticket" value="@PendingSignInTicket" />
+            </form>
+        }
     </div>
 </div>
 
@@ -128,6 +135,7 @@
 @using ScamAlert.Api.Contracts
 @inject HttpClient Http
 @inject NavigationManager NavigationManager
+@inject IJSRuntime Js
 @inject IOptions<BillingOptions> BillingOptions
 @inject IOptions<WebSiteOptions> WebOptions
 
@@ -135,6 +143,8 @@
     private bool Busy { get; set; }
     private string? Message { get; set; }
     private bool IsError { get; set; }
+    private string? PendingSignInTicket { get; set; }
+    private bool _completeFormSubmitted;
     private List<SignupPlanResponse> Plans { get; } = [];
 
     private string SinglePlanDisplay
@@ -277,6 +287,14 @@
             }
 
             var doc = await response.Content.ReadFromJsonAsync<JsonElement>();
+            if (doc.TryGetProperty("signInTicket", out var ticketElement) &&
+                ticketElement.ValueKind == JsonValueKind.String &&
+                !string.IsNullOrWhiteSpace(ticketElement.GetString()))
+            {
+                PendingSignInTicket = ticketElement.GetString();
+                return;
+            }
+
             var url = doc.GetProperty("checkoutUrl").GetString();
             if (!string.IsNullOrWhiteSpace(url))
             {
@@ -287,6 +305,17 @@
         {
             Busy = false;
         }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (string.IsNullOrEmpty(PendingSignInTicket) || _completeFormSubmitted)
+        {
+            return;
+        }
+
+        _completeFormSubmitted = true;
+        await Js.InvokeVoidAsync("scamAlertSubmitForm", "signup-complete-form");
     }
 
     public sealed class SignupFormModel

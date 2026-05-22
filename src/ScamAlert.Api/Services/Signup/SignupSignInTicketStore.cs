@@ -14,7 +14,7 @@ public interface ISignupSignInTicketStore
 /// </summary>
 public sealed class SignupSignInTicketStore : ISignupSignInTicketStore
 {
-    private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(3);
 
     private readonly ConcurrentDictionary<string, (Guid CustomerId, DateTimeOffset ExpiresUtc)> _tickets = new(StringComparer.Ordinal);
 

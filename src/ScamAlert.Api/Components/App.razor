@@ -15,6 +15,9 @@
 <body class="sa-app">
     <Routes />
     <script src="_framework/blazor.web.js"></script>
+    <script>
+        window.scamAlertSubmitForm = (id) => document.getElementById(id)?.requestSubmit();
+    </script>
 </body>
 
 </html>

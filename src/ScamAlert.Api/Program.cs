@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components.Authorization;
@@ -24,7 +25,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 
-builder.Services.AddControllers();
+builder.Services.AddControllersWithViews();
+builder.Services.AddAntiforgery();
 builder.Services.AddOpenApi(options =>
 {
     options.AddDocumentTransformer((document, _, _) =>
@@ -58,6 +60,7 @@ builder.Services.Configure<PairingOptions>(builder.Configuration.GetSection(Pair
 builder.Services.AddSingleton<IBillingTierCatalog, BillingTierCatalog>();
 builder.Services.AddScoped<ISignupService, SignupService>();
 builder.Services.AddSingleton<ISignupSignInTicketStore, SignupSignInTicketStore>();
+builder.Services.AddSingleton<IConsumedStripeCheckoutStore, ConsumedStripeCheckoutStore>();
 builder.Services.AddScoped<ISignupCheckoutCompletionService, SignupCheckoutCompletionService>();
 builder.Services.AddScoped<IPortalCookieSignInService, PortalCookieSignInService>();
 builder.Services.AddScoped<ICustomerPortalContext, CustomerPortalContext>();
@@ -165,8 +168,22 @@ if (!app.Environment.IsEnvironment("Testing"))
 app.MapDefaultEndpoints();
 app.MapControllers();
 
+if (app.Environment.IsEnvironment("Testing"))
+{
+    app.MapGet("/__test/antiforgery-token", (HttpContext context, IAntiforgery antiforgery) =>
+    {
+        var tokens = antiforgery.GetAndStoreTokens(context);
+        return Results.Ok(new { token = tokens.RequestToken });
+    }).AllowAnonymous();
+}
+
 app.MapGet("/signup/success", (HttpRequest request) =>
-    Results.Redirect("/signup/complete" + request.QueryString.Value));
+{
+    var sessionId = request.Query["session_id"].ToString();
+    return string.IsNullOrWhiteSpace(sessionId)
+        ? Results.Redirect("/signup/complete")
+        : Results.Redirect($"/signup/complete?session_id={Uri.EscapeDataString(sessionId)}");
+});
 
 if (!app.Environment.IsEnvironment("Testing"))
 {

@@ -17,7 +17,8 @@ public sealed record SignupCheckoutCompletionResult(bool Success, Guid? Customer
 public sealed class SignupCheckoutCompletionService(
     ScamAlertDbContext dbContext,
     IOptions<StripeOptions> stripeOptions,
-    ISubscriptionPaymentActivator subscriptionPaymentActivator) : ISignupCheckoutCompletionService
+    ISubscriptionPaymentActivator subscriptionPaymentActivator,
+    IConsumedStripeCheckoutStore consumedCheckoutStore) : ISignupCheckoutCompletionService
 {
     public async Task<SignupCheckoutCompletionResult> TryCompleteStripeSessionAsync(
         string sessionId,
@@ -45,6 +46,16 @@ public sealed class SignupCheckoutCompletionService(
             return new SignupCheckoutCompletionResult(false, null, "Checkout is not complete yet.");
         }
 
+        if (!string.Equals(session.Mode, "subscription", StringComparison.OrdinalIgnoreCase))
+        {
+            return new SignupCheckoutCompletionResult(false, null, "Checkout session is not a subscription signup.");
+        }
+
+        if (!consumedCheckoutStore.TryMarkConsumed(sessionId))
+        {
+            return new SignupCheckoutCompletionResult(false, null, "Checkout session was already used.");
+        }
+
         if (!TryResolveCustomerId(session, out var customerId))
         {
             return new SignupCheckoutCompletionResult(false, null, "Checkout session is missing account reference.");
@@ -53,6 +64,14 @@ public sealed class SignupCheckoutCompletionService(
         var customerExists = await dbContext.Customers.AsNoTracking()
             .AnyAsync(x => x.Id == customerId, cancellationToken);
         if (!customerExists)
+        {
+            return new SignupCheckoutCompletionResult(false, null, "Account not found.");
+        }
+
+        var scopeId = customerId.ToString("D");
+        var hasPortalLogin = await dbContext.AuthUserCredentials.AsNoTracking()
+            .AnyAsync(x => x.IsActive && x.CustomerScopeCsv == scopeId, cancellationToken);
+        if (!hasPortalLogin)
         {
             return new SignupCheckoutCompletionResult(false, null, "Account not found.");
         }

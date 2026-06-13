@@ -46,11 +46,11 @@ public sealed class SignupController(ISignupService signupService) : ControllerB
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("already exists", StringComparison.OrdinalIgnoreCase))
         {
-            return Conflict(new { error = ex.Message });
+            return Conflict(new { error = "An account with that email address already exists." });
         }
-        catch (InvalidOperationException ex)
+        catch (InvalidOperationException)
         {
-            return BadRequest(new { error = ex.Message });
+            return BadRequest(new { error = "Signup could not be completed. Check your request and try again." });
         }
     }
 }

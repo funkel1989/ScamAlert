@@ -68,6 +68,7 @@ builder.Services.AddScoped<IPortalDeviceService, PortalDeviceService>();
 builder.Services.AddScoped<IDevicePairingService, DevicePairingService>();
 builder.Services.AddScoped<IPortalContactService, PortalContactService>();
 builder.Services.AddScoped<IPasswordResetService, PasswordResetService>();
+builder.Services.AddScoped<IEmailVerificationService, EmailVerificationService>();
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.SectionName));
 builder.Services.AddHttpClient(nameof(SendGridEmailSender));
 builder.Services.AddScoped<LoggingEmailSender>();
@@ -153,8 +154,24 @@ if (app.Environment.IsDevelopment())
 if (!app.Environment.IsEnvironment("Testing"))
 {
     app.UseHttpsRedirection();
+    app.UseHsts();
     app.UseStaticFiles();
 }
+
+app.Use(async (context, next) =>
+{
+    context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    context.Response.Headers["X-Frame-Options"] = "DENY";
+    context.Response.Headers["X-XSS-Protection"] = "1; mode=block";
+    context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    context.Response.Headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
+    if (!app.Environment.IsDevelopment())
+    {
+        context.Response.Headers["Content-Security-Policy"] =
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none';";
+    }
+    await next();
+});
 
 app.UseAuthentication();
 app.UseRateLimiter();

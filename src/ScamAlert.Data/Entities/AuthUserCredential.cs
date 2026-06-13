@@ -8,6 +8,7 @@ public sealed class AuthUserCredential
     public string RolesCsv { get; set; } = "operator";
     public string CustomerScopeCsv { get; set; } = "*";
     public bool IsActive { get; set; } = true;
+    public bool IsEmailVerified { get; set; }
     public int FailedLoginCount { get; set; }
     public DateTimeOffset? LockoutEndUtc { get; set; }
     public DateTimeOffset? LastLoginUtc { get; set; }

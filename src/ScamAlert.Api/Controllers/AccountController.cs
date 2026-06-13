@@ -10,7 +10,9 @@ namespace ScamAlert.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [AllowAnonymous]
-public sealed class AccountController(IPasswordResetService passwordResetService) : ControllerBase
+public sealed class AccountController(
+    IPasswordResetService passwordResetService,
+    IEmailVerificationService emailVerificationService) : ControllerBase
 {
     [HttpPost("forgot-password")]
     [EnableRateLimiting("signup")]
@@ -38,5 +40,33 @@ public sealed class AccountController(IPasswordResetService passwordResetService
         return ok
             ? Ok(new { message = "Password updated. You can log in now." })
             : BadRequest(new { error = "Invalid or expired reset link." });
+    }
+
+    [HttpPost("verify-email")]
+    [EnableRateLimiting("signup")]
+    public async Task<IActionResult> VerifyEmail([FromQuery] string token, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return BadRequest(new { error = "Verification token is required." });
+        }
+
+        var ok = await emailVerificationService.VerifyAsync(token, cancellationToken);
+        return ok
+            ? Ok(new { message = "Email verified. You can now log in." })
+            : BadRequest(new { error = "Invalid or expired verification link." });
+    }
+
+    [HttpPost("resend-verification")]
+    [EnableRateLimiting("signup")]
+    public async Task<IActionResult> ResendVerification(ForgotPasswordRequest request, CancellationToken cancellationToken)
+    {
+        if (!EmailAddressValidator.TryValidate(request.Email, out var email, out var emailError))
+        {
+            return BadRequest(new { error = emailError });
+        }
+
+        await emailVerificationService.SendVerificationEmailAsync(email, cancellationToken);
+        return Ok(new { message = "If an unverified account exists for that email, a new verification link has been sent." });
     }
 }

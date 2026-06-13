@@ -68,6 +68,7 @@ public static class AuthServiceCollectionExtensions
                 AddBillingRateLimitPolicies(rateLimiterOptions);
                 AddSetupRedeemRateLimitPolicy(rateLimiterOptions);
                 AddSignupCompleteRateLimitPolicy(rateLimiterOptions);
+                AddAlertIngestRateLimitPolicy(rateLimiterOptions);
             });
             return services;
         }
@@ -111,7 +112,8 @@ public static class AuthServiceCollectionExtensions
                     cookie.LoginPath = "/login";
                     cookie.Cookie.Name = "ScamAlert.Portal";
                     cookie.Cookie.HttpOnly = true;
-                    cookie.Cookie.SameSite = SameSiteMode.Lax;
+                    cookie.Cookie.SameSite = SameSiteMode.Strict;
+                    cookie.Cookie.SecurePolicy = CookieSecurePolicy.Always;
                 })
                 .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>
                 {
@@ -187,6 +189,7 @@ public static class AuthServiceCollectionExtensions
             AddBillingRateLimitPolicies(rateLimiterOptions);
             AddSetupRedeemRateLimitPolicy(rateLimiterOptions);
             AddSignupCompleteRateLimitPolicy(rateLimiterOptions);
+            AddAlertIngestRateLimitPolicy(rateLimiterOptions);
         });
         return services;
     }
@@ -261,6 +264,26 @@ public static class AuthServiceCollectionExtensions
                     QueueLimit = 0,
                     AutoReplenishment = true
                 }));
+    }
+
+    private static void AddAlertIngestRateLimitPolicy(RateLimiterOptions rateLimiterOptions)
+    {
+        rateLimiterOptions.AddPolicy("alert-ingest", context =>
+        {
+            var deviceKey = context.Request.Headers["X-ScamAlert-DeviceKey"].ToString();
+            var partitionKey = !string.IsNullOrEmpty(deviceKey)
+                ? $"device:{deviceKey[..Math.Min(16, deviceKey.Length)]}"
+                : $"ip:{context.Connection.RemoteIpAddress?.ToString() ?? "unknown"}";
+            return RateLimitPartition.GetFixedWindowLimiter(
+                partitionKey,
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 60,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true
+                });
+        });
     }
 
     private static void ValidateJwtOptions(JwtAuthOptions jwt)

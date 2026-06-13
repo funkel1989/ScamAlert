@@ -13,6 +13,7 @@ public interface IAuthCredentialService
 public sealed record AuthValidationResult(
     bool Success,
     bool IsLockedOut,
+    bool IsEmailUnverified,
     DateTimeOffset? LockoutEndUtc,
     string Username,
     IReadOnlyCollection<string> Roles,
@@ -31,13 +32,13 @@ public sealed class AuthCredentialService(
 
         if (user is null || !user.IsActive)
         {
-            return new AuthValidationResult(false, false, null, normalized, [], []);
+            return new AuthValidationResult(false, false, false, null, normalized, [], []);
         }
 
         var now = DateTimeOffset.UtcNow;
         if (user.LockoutEndUtc is { } lockoutEnd && lockoutEnd > now)
         {
-            return new AuthValidationResult(false, true, lockoutEnd, user.Username, [], []);
+            return new AuthValidationResult(false, true, false, lockoutEnd, user.Username, [], []);
         }
 
         if (!passwordHasher.Verify(user.PasswordHash, password))
@@ -52,7 +53,12 @@ public sealed class AuthCredentialService(
             }
 
             await dbContext.SaveChangesAsync(cancellationToken);
-            return new AuthValidationResult(false, user.LockoutEndUtc is { } future && future > now, user.LockoutEndUtc, user.Username, [], []);
+            return new AuthValidationResult(false, user.LockoutEndUtc is { } future && future > now, false, user.LockoutEndUtc, user.Username, [], []);
+        }
+
+        if (!user.IsEmailVerified)
+        {
+            return new AuthValidationResult(false, false, true, null, user.Username, [], []);
         }
 
         user.FailedLoginCount = 0;
@@ -69,6 +75,6 @@ public sealed class AuthCredentialService(
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
-        return new AuthValidationResult(true, false, null, user.Username, roles, customerScope);
+        return new AuthValidationResult(true, false, false, null, user.Username, roles, customerScope);
     }
 }

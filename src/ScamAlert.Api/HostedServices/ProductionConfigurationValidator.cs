@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using ScamAlert.Api.Services.Auth;
 using ScamAlert.Api.Services.Billing;
 using ScamAlert.Api.Services.Email;
+using ScamAlert.Api.Services.Notifications;
 using ScamAlert.Api.Services.Stripe;
 using ScamAlert.Api.Services.Web;
 
@@ -15,6 +16,7 @@ public sealed class ProductionConfigurationValidator(
     IOptions<WebSiteOptions> webOptions,
     IOptions<EmailOptions> emailOptions,
     IOptions<BillingOptions> billingOptions,
+    IOptions<TwilioOptions> twilioOptions,
     ILogger<ProductionConfigurationValidator> logger) : IHostedService
 {
     private static readonly string[] PlaceholderJwtMarkers =
@@ -72,6 +74,27 @@ public sealed class ProductionConfigurationValidator(
         if (string.IsNullOrWhiteSpace(emailOptions.Value.SendGridApiKey))
         {
             issues.Add("Email:SendGridApiKey is empty — password reset and welcome emails will only log locally.");
+        }
+
+        var twilio = twilioOptions.Value;
+        if (string.IsNullOrWhiteSpace(twilio.AccountSid))
+        {
+            issues.Add("Twilio:AccountSid is required in production.");
+        }
+
+        if (string.IsNullOrWhiteSpace(twilio.AuthToken))
+        {
+            issues.Add("Twilio:AuthToken is required in production.");
+        }
+
+        if (string.IsNullOrWhiteSpace(twilio.FromPhoneNumber))
+        {
+            issues.Add("Twilio:FromPhoneNumber is required in production.");
+        }
+
+        if (!twilio.ValidateWebhookSignatures)
+        {
+            issues.Add("Twilio:ValidateWebhookSignatures must be true in production.");
         }
 
         if (issues.Count == 0)

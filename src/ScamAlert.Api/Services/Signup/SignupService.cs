@@ -30,6 +30,7 @@ public sealed class SignupService(
     ScamAlertDbContext dbContext,
     IPasswordHasher passwordHasher,
     IEmailSender emailSender,
+    IEmailVerificationService emailVerificationService,
     IOptions<StripeOptions> stripeOptions,
     IOptions<WebSiteOptions> webOptions,
     IOptions<BillingOptions> billingOptions,
@@ -178,6 +179,7 @@ public sealed class SignupService(
                 x.ApiKey))
             .ToList();
 
+        await emailVerificationService.SendVerificationEmailAsync(email, cancellationToken);
         await TrySendWelcomeEmailAsync(email, request.Name.Trim(), provisionedDevices, web.PublicBaseUrl, cancellationToken);
 
         if (stripe.SkipPaymentForDevelopment)

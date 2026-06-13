@@ -28,6 +28,11 @@ public sealed class AuthController(
                 return Unauthorized(new { error = "Account temporarily locked due to failed login attempts.", lockedUntilUtc = result.LockoutEndUtc });
             }
 
+            if (result.IsEmailUnverified)
+            {
+                return StatusCode(403, new { error = "Email address not verified. Check your inbox for a verification link.", code = "email_unverified" });
+            }
+
             return Unauthorized(new { error = "Invalid username or password." });
         }
 

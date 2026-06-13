@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using ScamAlert.Api.Contracts;
 using ScamAlert.Api.Services.Audit;
@@ -110,6 +111,7 @@ public sealed class AlertsController(
 
     [Microsoft.AspNetCore.Authorization.AllowAnonymous]
     [HttpPost]
+    [EnableRateLimiting("alert-ingest")]
     public async Task<IActionResult> Raise(RaiseAlertRequest request, CancellationToken cancellationToken)
     {
         var targetCustomerId = await ResolveCustomerIdByExternalDeviceIdAsync(request.ExternalDeviceId, cancellationToken);
@@ -143,9 +145,9 @@ public sealed class AlertsController(
                 alert.UpdatedUtc
             });
         }
-        catch (InvalidOperationException exception)
+        catch (InvalidOperationException)
         {
-            return BadRequest(new { error = exception.Message });
+            return BadRequest(new { error = "Alert could not be processed. Verify the device is active and the request is valid." });
         }
     }
 

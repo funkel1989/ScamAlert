@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ScamAlert.Data;
 
@@ -11,9 +12,11 @@ using ScamAlert.Data;
 namespace ScamAlert.Data.Migrations
 {
     [DbContext(typeof(ScamAlertDbContext))]
-    partial class ScamAlertDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260613151847_EmailVerification")]
+    partial class EmailVerification
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

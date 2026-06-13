@@ -1,6 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using ScamAlert.Data;
 
 namespace ScamAlert.Api.Tests;
 
@@ -58,6 +61,7 @@ public sealed class RedirectFlowValidationTests
 
         var email = $"login-flow-{Guid.NewGuid():N}@example.com";
         await SignupUserAsync(client, email);
+        await VerifyEmailDirectlyAsync(factory, email);
 
         var token = await GetAntiforgeryTokenAsync(client);
         var signIn = await PostFormAsync(client, "/login/sign-in", token, new Dictionary<string, string?>
@@ -78,6 +82,7 @@ public sealed class RedirectFlowValidationTests
 
         var email = $"login-redirect-{Guid.NewGuid():N}@example.com";
         await SignupUserAsync(client, email);
+        await VerifyEmailDirectlyAsync(factory, email);
 
         var token = await GetAntiforgeryTokenAsync(client);
         var signIn = await PostFormAsync(client, "/login/sign-in", token, new Dictionary<string, string?>
@@ -98,6 +103,7 @@ public sealed class RedirectFlowValidationTests
 
         var email = $"login-return-{Guid.NewGuid():N}@example.com";
         await SignupUserAsync(client, email);
+        await VerifyEmailDirectlyAsync(factory, email);
 
         var token = await GetAntiforgeryTokenAsync(client);
         var signIn = await PostFormAsync(client, "/login/sign-in", token, new Dictionary<string, string?>
@@ -156,6 +162,15 @@ public sealed class RedirectFlowValidationTests
     {
         fields["__RequestVerificationToken"] = antiforgeryToken;
         return client.PostAsync(path, new FormUrlEncodedContent(fields!));
+    }
+
+    private static async Task VerifyEmailDirectlyAsync(TestWebApplicationFactory factory, string email)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ScamAlertDbContext>();
+        var user = await db.AuthUserCredentials.SingleAsync(x => x.Username == email);
+        user.IsEmailVerified = true;
+        await db.SaveChangesAsync();
     }
 
     private static async Task SignupUserAsync(HttpClient client, string email)

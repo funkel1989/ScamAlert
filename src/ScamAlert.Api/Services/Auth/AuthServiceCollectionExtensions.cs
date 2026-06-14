@@ -22,6 +22,7 @@ public static class AuthServiceCollectionExtensions
         {
             services.Configure<AuthOptions>(configuration.GetSection(AuthOptions.SectionName));
             services.AddSingleton<IPasswordHasher, PasswordHasher>();
+            services.AddSingleton<ITokenService, JwtTokenService>();
             services.AddScoped<IAuthCredentialService, AuthCredentialService>();
             services.AddScoped<ICurrentUserAccessService, CurrentUserAccessService>();
             services.AddScoped<IDeviceIngestAuthService, DeviceIngestAuthService>();

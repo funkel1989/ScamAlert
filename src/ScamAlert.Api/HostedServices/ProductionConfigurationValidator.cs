@@ -52,6 +52,11 @@ public sealed class ProductionConfigurationValidator(
                 issues.Add("Stripe:SecretKey is required when SkipPaymentForDevelopment is false.");
             }
 
+            if (string.IsNullOrWhiteSpace(stripeOptions.Value.WebhookSecret))
+            {
+                issues.Add("Stripe:WebhookSecret is required when SkipPaymentForDevelopment is false.");
+            }
+
             foreach (var tier in billingOptions.Value.Tiers)
             {
                 if (tier.StripePriceId.Contains("REPLACE", StringComparison.OrdinalIgnoreCase))

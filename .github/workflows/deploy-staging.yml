@@ -20,6 +20,10 @@ on:
         description: 'Email address for monitoring alerts'
         required: false
         default: ''
+      stripe_price_id_pro:
+        description: 'Stripe Price ID for the pro plan (from Stripe Dashboard)'
+        required: false
+        default: ''
 
 permissions:
   id-token: write
@@ -82,6 +86,7 @@ jobs:
             sqlAdminLogin=${{ secrets.SQL_ADMIN_LOGIN }}
             sqlAdminPassword=${{ secrets.SQL_ADMIN_PASSWORD }}
             alertEmailAddress=${{ inputs.alert_email || secrets.ALERT_EMAIL_ADDRESS }}
+            stripePriceIdPro=${{ inputs.stripe_price_id_pro || secrets.STRIPE_PRICE_ID_PRO }}
 
       - name: Capture outputs
         id: infra

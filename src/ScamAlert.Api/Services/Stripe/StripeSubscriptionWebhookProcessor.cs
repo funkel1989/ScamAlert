@@ -34,6 +34,9 @@ public sealed class StripeSubscriptionWebhookProcessor(
             case "checkout.session.completed" when stripeEvent.Data.Object is Session session:
                 await HandleCheckoutSessionCompletedAsync(session, cancellationToken);
                 break;
+            case "checkout.session.expired" when stripeEvent.Data.Object is Session expired:
+                await HandleCheckoutSessionExpiredAsync(expired, cancellationToken);
+                break;
             case "customer.subscription.updated" when stripeEvent.Data.Object is global::Stripe.Subscription stripeSub:
                 await ApplyStripeSubscriptionAsync(stripeSub, cancellationToken);
                 break;
@@ -118,6 +121,43 @@ public sealed class StripeSubscriptionWebhookProcessor(
         {
             await legacyActivator.TryActivateCustomerAsync(customerId, cancellationToken);
         }
+    }
+
+    private async Task HandleCheckoutSessionExpiredAsync(Session session, CancellationToken cancellationToken)
+    {
+        if (!TryResolveCustomerId(session, out var customerId))
+        {
+            return;
+        }
+
+        var customer = await dbContext.Customers
+            .Include(x => x.Subscriptions)
+            .SingleOrDefaultAsync(x => x.Id == customerId, cancellationToken);
+
+        if (customer is null)
+        {
+            return;
+        }
+
+        var pendingSub = customer.Subscriptions
+            .Where(x => x.Status == SubscriptionStatus.PendingPayment)
+            .OrderByDescending(x => x.StartsUtc)
+            .FirstOrDefault();
+
+        if (pendingSub is null)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        pendingSub.Status = SubscriptionStatus.Canceled;
+        pendingSub.EndsUtc = now;
+        pendingSub.UpdatedUtc = now;
+        customer.UpdatedUtc = now;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        logger.LogInformation(
+            "Checkout session expired for customer {CustomerId}; pending subscription marked canceled.",
+            customerId);
     }
 
     private async Task ApplyStripeSubscriptionAsync(global::Stripe.Subscription stripeSub, CancellationToken cancellationToken)

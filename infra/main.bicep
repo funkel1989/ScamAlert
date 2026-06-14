@@ -27,6 +27,9 @@ param customDomainHost string = ''
 @description('Email address to receive monitoring alerts.')
 param alertEmailAddress string
 
+@description('Stripe Price ID for the pro plan (e.g. price_abc123). Get this from the Stripe Dashboard.')
+param stripePriceIdPro string = 'price_REPLACE_799_USD_MONTHLY'
+
 var uniqueSuffix = uniqueString(resourceGroup().id, environmentName, location)
 var tags = {
   application: 'ScamAlert'
@@ -307,6 +310,10 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
         {
           name: 'Web__SupportEmail'
           value: 'support@scamalert.com'
+        }
+        {
+          name: 'Billing__Tiers__0__StripePriceId'
+          value: stripePriceIdPro
         }
         {
           name: 'ConnectionStrings__ScamAlertDb'

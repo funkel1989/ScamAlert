@@ -14,5 +14,5 @@ public sealed class WebSiteOptions
     public string SupportEmail { get; set; } = "support@scamalert.com";
 
     /// <summary>ISO date string for policy "last updated" (YYYY-MM-DD).</summary>
-    public string LegalEffectiveDate { get; set; } = "2026-05-19";
+    public string LegalEffectiveDate { get; set; } = "2026-06-13";
 }

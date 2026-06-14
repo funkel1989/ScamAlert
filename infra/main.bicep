@@ -24,6 +24,9 @@ param appServicePlanSku string = 'B1'
 @description('Optional custom domain hostname (without https://). Leave empty to use the default azurewebsites.net URL.')
 param customDomainHost string = ''
 
+@description('Email address to receive monitoring alerts.')
+param alertEmailAddress string
+
 var uniqueSuffix = uniqueString(resourceGroup().id, environmentName, location)
 var tags = {
   application: 'ScamAlert'
@@ -163,6 +166,54 @@ resource secretJwtSigningKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   }
 }
 
+resource secretStripeSecretKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVault
+  name: 'Stripe--SecretKey'
+  properties: {
+    value: 'REPLACE_WITH_STRIPE_SECRET_KEY'
+  }
+}
+
+resource secretStripeWebhookSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVault
+  name: 'Stripe--WebhookSecret'
+  properties: {
+    value: 'REPLACE_WITH_STRIPE_WEBHOOK_SECRET'
+  }
+}
+
+resource secretTwilioAccountSid 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVault
+  name: 'Twilio--AccountSid'
+  properties: {
+    value: 'REPLACE_WITH_TWILIO_ACCOUNT_SID'
+  }
+}
+
+resource secretTwilioAuthToken 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVault
+  name: 'Twilio--AuthToken'
+  properties: {
+    value: 'REPLACE_WITH_TWILIO_AUTH_TOKEN'
+  }
+}
+
+resource secretTwilioFromPhone 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVault
+  name: 'Twilio--FromPhoneNumber'
+  properties: {
+    value: 'REPLACE_WITH_TWILIO_FROM_PHONE'
+  }
+}
+
+resource secretSendGridApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVault
+  name: 'Email--SendGridApiKey'
+  properties: {
+    value: 'REPLACE_WITH_SENDGRID_API_KEY'
+  }
+}
+
 // --- App Service ---
 resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   name: 'asp-${namePrefix}-${environmentName}-${uniqueSuffix}'
@@ -184,6 +235,12 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
   dependsOn: [
     secretSqlConnection
     secretJwtSigningKey
+    secretStripeSecretKey
+    secretStripeWebhookSecret
+    secretTwilioAccountSid
+    secretTwilioAuthToken
+    secretTwilioFromPhone
+    secretSendGridApiKey
   ]
   identity: {
     type: 'SystemAssigned'
@@ -232,12 +289,56 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
           value: '${webAppPublicBaseUrl}/api/webhooks/twilio/status'
         }
         {
+          name: 'AllowedHosts'
+          value: empty(customDomainHost) ? webAppDefaultHostName : '${customDomainHost};${webAppDefaultHostName}'
+        }
+        {
+          name: 'Email__FromAddress'
+          value: 'noreply@scamalert.com'
+        }
+        {
+          name: 'Email__FromDisplayName'
+          value: 'ScamAlert'
+        }
+        {
+          name: 'Web__LegalEntityName'
+          value: 'ScamAlert'
+        }
+        {
+          name: 'Web__SupportEmail'
+          value: 'support@scamalert.com'
+        }
+        {
           name: 'ConnectionStrings__ScamAlertDb'
           value: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=ConnectionStrings--ScamAlertDb)'
         }
         {
           name: 'Authentication__Jwt__SigningKey'
           value: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=Authentication--Jwt--SigningKey)'
+        }
+        {
+          name: 'Stripe__SecretKey'
+          value: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=Stripe--SecretKey)'
+        }
+        {
+          name: 'Stripe__WebhookSecret'
+          value: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=Stripe--WebhookSecret)'
+        }
+        {
+          name: 'Twilio__AccountSid'
+          value: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=Twilio--AccountSid)'
+        }
+        {
+          name: 'Twilio__AuthToken'
+          value: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=Twilio--AuthToken)'
+        }
+        {
+          name: 'Twilio__FromPhoneNumber'
+          value: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=Twilio--FromPhoneNumber)'
+        }
+        {
+          name: 'Email__SendGridApiKey'
+          value: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=Email--SendGridApiKey)'
         }
       ]
     }
@@ -251,6 +352,193 @@ resource webAppKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-0
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
     principalId: webApp.identity.principalId
     principalType: 'ServicePrincipal'
+  }
+}
+
+// --- Monitoring Alerts ---
+
+resource actionGroup 'Microsoft.Insights/actionGroups@2023-01-01' = {
+  name: 'ag-${namePrefix}-${environmentName}'
+  location: 'global'
+  tags: tags
+  properties: {
+    groupShortName: 'ScamAlert'
+    enabled: true
+    emailReceivers: [
+      {
+        name: 'ops-email'
+        emailAddress: alertEmailAddress
+        useCommonAlertSchema: true
+      }
+    ]
+  }
+}
+
+resource alertHttp5xx 'Microsoft.Insights/metricAlerts@2018-03-01' = {
+  name: 'alert-http5xx-${namePrefix}-${environmentName}'
+  location: 'global'
+  tags: tags
+  properties: {
+    description: 'Fires when HTTP 5xx errors exceed 10 in 5 minutes.'
+    severity: 1
+    enabled: true
+    scopes: [webApp.id]
+    evaluationFrequency: 'PT1M'
+    windowSize: 'PT5M'
+    criteria: {
+      'odata.type': 'Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria'
+      allOf: [
+        {
+          name: 'Http5xxCriteria'
+          metricName: 'Http5xx'
+          operator: 'GreaterThan'
+          threshold: 10
+          timeAggregation: 'Total'
+          criterionType: 'StaticThresholdCriterion'
+        }
+      ]
+    }
+    actions: [
+      {
+        actionGroupId: actionGroup.id
+      }
+    ]
+  }
+}
+
+resource alertSlowResponse 'Microsoft.Insights/metricAlerts@2018-03-01' = {
+  name: 'alert-slow-response-${namePrefix}-${environmentName}'
+  location: 'global'
+  tags: tags
+  properties: {
+    description: 'Fires when average response time exceeds 5 seconds over 10 minutes.'
+    severity: 2
+    enabled: true
+    scopes: [webApp.id]
+    evaluationFrequency: 'PT5M'
+    windowSize: 'PT10M'
+    criteria: {
+      'odata.type': 'Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria'
+      allOf: [
+        {
+          name: 'ResponseTimeCriteria'
+          metricName: 'AverageResponseTime'
+          operator: 'GreaterThan'
+          threshold: 5
+          timeAggregation: 'Average'
+          criterionType: 'StaticThresholdCriterion'
+        }
+      ]
+    }
+    actions: [
+      {
+        actionGroupId: actionGroup.id
+      }
+    ]
+  }
+}
+
+resource alertHealthCheckDown 'Microsoft.Insights/metricAlerts@2018-03-01' = {
+  name: 'alert-health-down-${namePrefix}-${environmentName}'
+  location: 'global'
+  tags: tags
+  properties: {
+    description: 'Fires when the App Service health check reports the app as unavailable.'
+    severity: 0
+    enabled: true
+    scopes: [webApp.id]
+    evaluationFrequency: 'PT1M'
+    windowSize: 'PT5M'
+    criteria: {
+      'odata.type': 'Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria'
+      allOf: [
+        {
+          name: 'HealthCheckCriteria'
+          metricName: 'HealthCheckStatus'
+          operator: 'LessThan'
+          threshold: 1
+          timeAggregation: 'Average'
+          criterionType: 'StaticThresholdCriterion'
+        }
+      ]
+    }
+    actions: [
+      {
+        actionGroupId: actionGroup.id
+      }
+    ]
+  }
+}
+
+resource alertEscalationErrors 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
+  name: 'alert-escalation-errors-${namePrefix}-${environmentName}'
+  location: location
+  tags: tags
+  properties: {
+    description: 'Fires when the alert escalation worker logs errors, indicating SMS notifications may not be sent.'
+    severity: 1
+    enabled: true
+    scopes: [logAnalytics.id]
+    evaluationFrequency: 'PT5M'
+    windowSize: 'PT15M'
+    criteria: {
+      allOf: [
+        {
+          query: '''
+            AppTraces
+            | where Properties["OriginalFormat"] has "Alert escalation pass failed"
+            | summarize ErrorCount = count()
+          '''
+          timeAggregation: 'Count'
+          metricMeasureColumn: 'ErrorCount'
+          operator: 'GreaterThan'
+          threshold: 0
+          failingPeriods: {
+            numberOfEvaluationPeriods: 1
+            minFailingPeriodsToAlert: 1
+          }
+        }
+      ]
+    }
+    actions: {
+      actionGroups: [actionGroup.id]
+    }
+  }
+}
+
+resource alertAuthFailureSpike 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
+  name: 'alert-auth-failures-${namePrefix}-${environmentName}'
+  location: location
+  tags: tags
+  properties: {
+    description: 'Fires when auth failures exceed 50 in 15 minutes — potential brute-force attack.'
+    severity: 2
+    enabled: true
+    scopes: [logAnalytics.id]
+    evaluationFrequency: 'PT5M'
+    windowSize: 'PT15M'
+    criteria: {
+      allOf: [
+        {
+          query: '''
+            AppTraces
+            | where Properties["OriginalFormat"] has "AUDIT auth failed"
+            | summarize FailureCount = count()
+          '''
+          timeAggregation: 'Count'
+          metricMeasureColumn: 'FailureCount'
+          operator: 'GreaterThan'
+          threshold: 50
+          failingPeriods: {
+            numberOfEvaluationPeriods: 1
+            minFailingPeriodsToAlert: 1
+          }
+        }
+      ]
+    }
+    actions: {
+      actionGroups: [actionGroup.id]
+    }
   }
 }
 

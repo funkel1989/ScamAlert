@@ -9,6 +9,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- AppHost is dev-only and never deployed. Suppress transitive MessagePack advisory. -->
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-hv8m-jj95-wg3x" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Aspire.Hosting.SqlServer" Version="13.3.0" />
     <PackageReference Include="CommunityToolkit.Aspire.Hosting.SqlServer.Extensions" Version="13.3.0" />
     <ProjectReference Include="..\ScamAlert.Api\ScamAlert.Api.csproj" />

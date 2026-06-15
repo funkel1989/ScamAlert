@@ -1,0 +1,55 @@
+@page "/verify-email"
+@attribute [AllowAnonymous]
+
+<PageMeta Title="Verify your email — ScamAlert"
+          Description="Verify your ScamAlert email address to complete account setup."
+          CanonicalPath="/verify-email" />
+
+<div class="row justify-content-center">
+    <div class="col-md-6 col-lg-5">
+        <h1 class="h3 mb-3">Email verification</h1>
+
+        @if (Loading)
+        {
+            <p class="text-secondary">Verifying your email address&hellip;</p>
+        }
+        else if (Verified)
+        {
+            <div class="alert alert-success">
+                <strong>Email verified.</strong> Your account is active—you can now sign in.
+            </div>
+            <a class="btn btn-primary" href="/login">Sign in</a>
+        }
+        else
+        {
+            <div class="alert alert-danger">
+                This verification link is invalid or has already been used. Links expire after 24 hours.
+            </div>
+            <p class="small text-secondary mt-2">
+                Sign in and we will let you know if your email still needs verification, or
+                <a href="/contact">contact support</a> if you need help.
+            </p>
+            <a class="btn btn-outline-primary" href="/login">Sign in</a>
+        }
+    </div>
+</div>
+
+@using ScamAlert.Api.Services.Auth
+@inject IEmailVerificationService EmailVerificationService
+
+@code {
+    [SupplyParameterFromQuery(Name = "token")]
+    public string? Token { get; set; }
+
+    private bool Loading { get; set; } = true;
+    private bool Verified { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(Token))
+        {
+            Verified = await EmailVerificationService.VerifyAsync(Token, CancellationToken.None);
+        }
+        Loading = false;
+    }
+}

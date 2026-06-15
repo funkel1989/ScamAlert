@@ -29,7 +29,9 @@ public sealed class LoginController(
         var result = await authCredentialService.ValidateAsync(normalizedEmail, password, cancellationToken);
         if (!result.Success)
         {
-            return RedirectToLogin(result.IsLockedOut ? "locked" : "invalid", returnUrl, normalizedEmail);
+            if (result.IsLockedOut) return RedirectToLogin("locked", returnUrl, normalizedEmail);
+            if (result.IsEmailUnverified) return RedirectToLogin("unverified", returnUrl, normalizedEmail);
+            return RedirectToLogin("invalid", returnUrl, normalizedEmail);
         }
 
         await portalSignIn.SignInFromValidationAsync(HttpContext, result);

@@ -12,7 +12,23 @@
             <div class="alert alert-success small">Account created—sign in to open your dashboard.</div>
         }
         <p class="text-secondary small">Sign in with the email and password you used when you subscribed.</p>
-        @if (!string.IsNullOrEmpty(ErrorMessage))
+        @if (ErrorCode == "unverified")
+        {
+            <div class="alert alert-warning">
+                <strong>Email not verified.</strong> Check your inbox for a verification link.
+                @if (!ResendSent)
+                {
+                    <button class="btn btn-sm btn-link p-0 ms-1 align-baseline" @onclick="ResendVerification" disabled="@Resending">
+                        @(Resending ? "Sending…" : "Resend it.")
+                    </button>
+                }
+                else
+                {
+                    <span class="ms-1 fw-semibold">Sent—check your inbox.</span>
+                }
+            </div>
+        }
+        else if (!string.IsNullOrEmpty(ErrorMessage))
         {
             <div class="alert alert-danger">@ErrorMessage</div>
         }
@@ -50,9 +66,11 @@
     </div>
 </div>
 
+@using ScamAlert.Api.Services.Auth
 @using ScamAlert.Api.Services.Validation
 @using ScamAlert.Api.Services.Web
 @inject IConfiguration Configuration
+@inject IEmailVerificationService EmailVerificationService
 
 @code {
     [SupplyParameterFromQuery(Name = "returnUrl")]
@@ -77,4 +95,16 @@
         "checkout" => "Payment could not be confirmed. Sign in if you already have an account.",
         _ => null
     };
+
+    private bool Resending { get; set; }
+    private bool ResendSent { get; set; }
+
+    private async Task ResendVerification()
+    {
+        if (string.IsNullOrWhiteSpace(Email) || Resending) return;
+        Resending = true;
+        await EmailVerificationService.SendVerificationEmailAsync(Email, CancellationToken.None);
+        Resending = false;
+        ResendSent = true;
+    }
 }
